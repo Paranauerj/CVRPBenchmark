@@ -1,5 +1,6 @@
 """Constants for CVRP Benchmark - Column names, field names, and other hardcoded strings."""
 
+from typing import Any
 from ortools.constraint_solver import routing_enums_pb2
 
 
@@ -76,13 +77,20 @@ COL_TIME_TO_TARGET = "Time to Target (s)"
 CHECKPOINT_BEST_COST_TEMPLATE = "Best Cost @ {}s"
 CHECKPOINT_AVG_COST_TEMPLATE = "Avg Cost @ {}s"
 
-def get_checkpoint_best_cost_col(time_sec: int) -> str:
-    """Get the column name for best cost at a specific time checkpoint."""
-    return CHECKPOINT_BEST_COST_TEMPLATE.format(time_sec)
+CHECKPOINT_BEST_COST_PCT_TEMPLATE = "Best Cost @ {}%"
+CHECKPOINT_AVG_COST_PCT_TEMPLATE = "Avg Cost @ {}%"
 
-def get_checkpoint_avg_cost_col(time_sec: int) -> str:
+def get_checkpoint_best_cost_col(time_val: Any, is_pct: bool = False) -> str:
+    """Get the column name for best cost at a specific time checkpoint."""
+    if is_pct:
+        return CHECKPOINT_BEST_COST_PCT_TEMPLATE.format(time_val)
+    return CHECKPOINT_BEST_COST_TEMPLATE.format(time_val)
+
+def get_checkpoint_avg_cost_col(time_val: Any, is_pct: bool = False) -> str:
     """Get the column name for average cost at a specific time checkpoint."""
-    return CHECKPOINT_AVG_COST_TEMPLATE.format(time_sec)
+    if is_pct:
+        return CHECKPOINT_AVG_COST_PCT_TEMPLATE.format(time_val)
+    return CHECKPOINT_AVG_COST_TEMPLATE.format(time_val)
 
 # ============================================================================
 # INSTANCE DATA KEYS (Dictionary keys used internally)
