@@ -1,0 +1,21 @@
+Route 1: 55 14 49
+Route 2: 8 18 11
+Route 3: 3 16 10
+Route 4: 37 27 41
+Route 5: 25 53 29
+Route 6: 13 48 32
+Route 7: 38 36 28
+Route 8: 12 19 44
+Route 9: 57 54 42
+Route 10: 35 60 6
+Route 11: 1 23 5
+Route 12: 22 30 56
+Route 13: 15 21 47
+Route 14: 46 39 20
+Route 15: 31 26 4
+Route 16: 45 40 2
+Route 17: 17 34 9
+Route 18: 59 24 33
+Route 19: 43 52 7
+Route 20: 50 58 51
+Cost 18829.0
