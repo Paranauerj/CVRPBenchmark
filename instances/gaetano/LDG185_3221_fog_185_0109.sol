@@ -1,0 +1,61 @@
+Route 1: 147 1 61 82
+Route 2: 115 75 29
+Route 3: 130 137 31
+Route 4: 180 28
+Route 5: 102 81 40
+Route 6: 70 90 131 132
+Route 7: 181 49
+Route 8: 42 44 148 30 170
+Route 9: 104 112 171
+Route 10: 143 68
+Route 11: 169 25 62
+Route 12: 109 101 66 185
+Route 13: 6 139 78 35
+Route 14: 174 159 157 67
+Route 15: 19 119 11 52
+Route 16: 23 103 48
+Route 17: 162 178
+Route 18: 118 87
+Route 19: 96 145 175
+Route 20: 117 55 107
+Route 21: 24 183 20
+Route 22: 36 57 22 94
+Route 23: 173 179 54
+Route 24: 13 60 126
+Route 25: 156 140 135 164
+Route 26: 153 116 50
+Route 27: 184 129 26
+Route 28: 100 69 111 160
+Route 29: 85 21 58
+Route 30: 121 47
+Route 31: 32 76
+Route 32: 84 166 138
+Route 33: 14 3 142
+Route 34: 113 177
+Route 35: 18 124 110 127
+Route 36: 41 154 38
+Route 37: 123 176 83
+Route 38: 12 149
+Route 39: 79 144 106
+Route 40: 9 80 98
+Route 41: 65 172 182 134
+Route 42: 146 34 77
+Route 43: 155 27
+Route 44: 37 10 165
+Route 45: 5 161 7
+Route 46: 45 105 59
+Route 47: 39 46
+Route 48: 51 95 152
+Route 49: 120 64 33 158 168 125
+Route 50: 63 150 167
+Route 51: 108 74 163
+Route 52: 72 4
+Route 53: 93 16 151
+Route 54: 92 53 71
+Route 55: 8 89 56
+Route 56: 17 97 73
+Route 57: 128 15 136 43 141
+Route 58: 2 86 133
+Route 59: 88 122 99 91
+Route 60: 114
+Cost 91826.0
