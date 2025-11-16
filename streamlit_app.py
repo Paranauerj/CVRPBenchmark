@@ -8,8 +8,8 @@ import ts_solver
 import solution_parser
 from benchmark_utils import execute_and_measure
 import statistics
-import glob # --- NEW IMPORT ---
-import os   # --- NEW IMPORT ---
+import glob
+import os
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -23,25 +23,32 @@ if 'run_benchmark' not in st.session_state:
 if 'results_df' not in st.session_state:
     st.session_state.results_df = None
 
-# --- NEW: Function to find instance files ---
+# --- NEW: Function to find and match instance files ---
 @st.cache_data # Cache this so it only runs once
 def find_instance_files(directory="instances"):
-    """Scans a directory for .vrp and .sol files."""
+    """
+    Scans a directory for .vrp files and finds their matching .sol files.
+    Returns a list of valid base names and a map to their full paths.
+    """
     vrp_pattern = os.path.join(directory, "*.vrp")
-    sol_pattern = os.path.join(directory, "*.sol")
-    
     vrp_files = sorted(glob.glob(vrp_pattern))
-    sol_files = sorted(glob.glob(sol_pattern))
     
-    # We just want the filenames for the dropdown
-    vrp_filenames = [os.path.basename(f) for f in vrp_files]
-    sol_filenames = [os.path.basename(f) for f in sol_files]
+    valid_instance_names = []
+    instance_path_map = {}
     
-    # Store the full paths in a dict for lookup
-    vrp_path_map = {os.path.basename(f): f for f in vrp_files}
-    sol_path_map = {os.path.basename(f): f for f in sol_files}
-    
-    return vrp_filenames, sol_filenames, vrp_path_map, sol_path_map
+    for vrp_path in vrp_files:
+        base_name = os.path.basename(vrp_path).replace(".vrp", "")
+        sol_path = os.path.join(directory, base_name + ".sol")
+        
+        # Only add the instance if BOTH files exist
+        if os.path.exists(sol_path):
+            valid_instance_names.append(base_name)
+            instance_path_map[base_name] = {
+                "vrp": vrp_path,
+                "sol": sol_path
+            }
+            
+    return valid_instance_names, instance_path_map
 
 st.title("CVRP Solver Benchmarker 📊")
 st.write("""
@@ -67,22 +74,19 @@ with st.sidebar:
     
     st.subheader("Experiment Settings")
     
-    # --- UPDATED: Load files from "instances" directory ---
-    vrp_filenames, sol_filenames, vrp_path_map, sol_path_map = find_instance_files("instances")
+    # --- UPDATED: Load and match files from "instances" directory ---
+    instance_names, instance_path_map = find_instance_files("instances")
 
-    if not vrp_filenames:
-        st.warning("No `.vrp` files found in the 'instances' directory. Please create it and add files.")
-    if not sol_filenames:
-        st.warning("No `.sol` files found in the 'instances' directory. Please create it and add files.")
+    if not instance_names:
+        st.warning(
+            "No matching `.vrp` / `.sol` pairs found in the 'instances' directory. "
+            "Please create it and add files (e.g., `X-n641-k35.vrp` and `X-n641-k35.sol`)."
+        )
 
-    # --- UPDATED: Selectboxes populated from file scan ---
-    selected_vrp_name = st.selectbox(
-        "Select Instance (.vrp) to Run:",
-        options=vrp_filenames
-    )
-    selected_sol_name = st.selectbox(
-        "Select Solution (.sol) to Run:",
-        options=sol_filenames
+    # --- UPDATED: Single selectbox for instance name ---
+    selected_instance_name = st.selectbox(
+        "Select Instance to Run:",
+        options=instance_names
     )
     
     st.subheader("2. Select Algorithms")
@@ -144,8 +148,8 @@ with st.sidebar:
 st.header("Controls")
 col1, col2 = st.columns(2)
 
-# --- UPDATED: Disable button if files are missing ---
-files_selected = (selected_vrp_name is not None) and (selected_sol_name is not None)
+# --- UPDATED: Disable button if no instances are found ---
+files_selected = (selected_instance_name is not None)
 if col1.button("🚀 Run Benchmark", type="primary", use_container_width=True, disabled=(not files_selected)):
     if not algorithms_to_run_other:
             st.toast("Warning: Running baseline only.", icon="⚠️")
@@ -158,25 +162,27 @@ if col2.button("⏹️ Stop Benchmark", use_container_width=True):
     st.toast("Stopping benchmark...")
 
 if not files_selected:
-    st.warning("No instance files found. Please create an 'instances' folder and add .vrp and .sol files.")
+    st.warning("No instance files found. Please create an 'instances' folder and add matching .vrp and .sol files.")
 
 
 # --- Main Page (State-Driven Logic) ---
 if st.session_state.run_benchmark:
     
     # --- UPDATED: Get file paths from map ---
-    vrp_path = vrp_path_map.get(selected_vrp_name)
-    sol_path = sol_path_map.get(selected_sol_name)
+    instance_paths = instance_path_map.get(selected_instance_name)
 
-    if vrp_path is None or sol_path is None:
-        st.error("File selection error. Please re-select files in the sidebar.")
+    if instance_paths is None:
+        st.error(f"File paths not found for instance: {selected_instance_name}. Please check the 'instances' folder.")
         st.session_state.run_benchmark = False
     else:
+        vrp_path = instance_paths["vrp"]
+        sol_path = instance_paths["sol"]
+        
         # --- UPDATED: Load data by opening file paths ---
         try:
             with open(vrp_path, 'r') as f:
                 instance_data = data_model.load_vrp_instance(f)
-            instance_name = selected_vrp_name
+            instance_name = selected_instance_name
             
             with open(sol_path, 'r') as f:
                 bks_cost = solution_parser.parse_solution_file(f)
