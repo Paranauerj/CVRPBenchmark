@@ -21,4 +21,5 @@ def execute_and_measure(algorithm_func, instance_data, **kwargs):
     return {
         "cpu_time": cpu_time,
         "objective_value": objective_value,
+        # "routes" removed to fix error
     }

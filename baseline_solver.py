@@ -53,10 +53,10 @@ def solve_baseline(data, **kwargs):
         
     # 2. Disable all local search to get the pure heuristic result
     search_parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.UNSET)
+        routing_enums_pb2.LocalSearchMetaheuristic.NO_LOCAL_SEARCH)
         
-    # 3. Force the solver to stop after *ten* solutions are found
-    search_parameters.time_limit.seconds = 20
+    # 3. Force the solver to stop after *one* solution is found
+    search_parameters.solution_limit = 1
     
     # NOTE: We explicitly DO NOT set a time limit.
     
@@ -65,21 +65,8 @@ def solve_baseline(data, **kwargs):
     solution = routing.SolveWithParameters(search_parameters)
     
     if solution:
-        # --- UPDATED: Extract and return routes ---
-        routes_list = []
-        for vehicle_id in range(routing.vehicles()):
-            route_nodes = []
-            index = routing.Start(vehicle_id)
-            while not routing.IsEnd(index):
-                node_index = manager.IndexToNode(index)
-                if node_index != data['depot']: # Do not include the depot in the route string
-                    route_nodes.append(str(node_index + 1)) # +1 to match .sol 1-indexing
-                index = solution.Value(routing.NextVar(index))
-            
-            if route_nodes: # If the route wasn't empty
-                routes_list.append("Route: " + " ".join(route_nodes))
-        
-        return solution.ObjectiveValue(), routes_list # Return a tuple
+        # --- UPDATED: Return cost only ---
+        return solution.ObjectiveValue()
         # ---
     else:
-        return None, None
+        return None
