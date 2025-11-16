@@ -11,6 +11,7 @@ import statistics
 import glob
 import os
 import math
+# --- plotting import removed ---
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -24,7 +25,7 @@ if 'run_benchmark' not in st.session_state:
 if 'results_df' not in st.session_state:
     st.session_state.results_df = None
 
-# --- NEW: Function to find and match instance files ---
+# --- (find_instance_files function is unchanged) ---
 @st.cache_data # Cache this so it only runs once
 def find_instance_files(directory="instances"):
     """
@@ -50,6 +51,8 @@ def find_instance_files(directory="instances"):
             }
             
     return valid_instance_names, instance_path_map
+
+# --- NEW: Plotting Function (REMOVED) ---
 
 st.title("CVRP Solver Benchmarker 📊")
 st.write("""
@@ -167,7 +170,7 @@ if not files_selected:
     st.warning("No instance files found. Please create an 'instances' folder and add matching .vrp and .sol files.")
 
 
-# --- Main Page (State-Driven Logic) ---
+# ... (rest of UI layout, sidebar, and controls are unchanged) ...
 if st.session_state.run_benchmark:
     
     # --- UPDATED: Get file paths from map ---
@@ -187,7 +190,7 @@ if st.session_state.run_benchmark:
             instance_name = selected_instance_name
             
             with open(sol_path, 'r') as f:
-                bks_cost = solution_parser.parse_solution_file(f)
+                bks_cost = solution_parser.parse_solution_file(f) # <--- UPDATED
             
         except Exception as e:
             st.error(f"Error parsing instance files: {vrp_path} or {sol_path}")
@@ -247,14 +250,13 @@ if st.session_state.run_benchmark:
             cpu_times, objectives = [], []
             status_bar.text(f"Testing Algorithm: {algo_name}...")
             
-            # --- NEW: Track best solution ---
-            best_cost_so_far = float('inf')
-            best_routes_so_far = None
-            # ---
+            # --- REMOVED: "Best solution" tracking ---
             
             reps = reps_to_run[algo_name]
             
             # --- UPDATED: Special handling for baseline ---
+            # This is the *single* definition of solver_kwargs,
+            # defined *outside* the repetitions loop.
             if algo_name == "Baseline (C&W)":
                 # Baseline is not configurable and should have no limits
                 solver_kwargs = {}
@@ -280,23 +282,13 @@ if st.session_state.run_benchmark:
                     text=f"Running {algo_name} (Rep {i+1}/{reps})"
                 )
                 
-                solver_kwargs = {}
-                if time_limit is not None:
-                    solver_kwargs["time_limit_seconds"] = time_limit
-                if solution_limit is not None:
-                    solver_kwargs["solution_limit"] = solution_limit
-                
                 measurement = execute_and_measure(algo_func, instance_data, **solver_kwargs)
                 cpu_times.append(measurement["cpu_time"])
                 
+                # --- UPDATED: Check for None ---
                 if measurement["objective_value"] is not None:
                     objectives.append(measurement["objective_value"])
-
-                    # --- NEW: Check for best ---
-                    if measurement["objective_value"] < best_cost_so_far:
-                        best_cost_so_far = measurement["objective_value"]
-                        best_routes_so_far = measurement["routes"]
-                    # ---
+                # ---
                 
             if not st.session_state.run_benchmark:
                 break
@@ -305,10 +297,9 @@ if st.session_state.run_benchmark:
                 results_list.append({
                     "Algorithm": algo_name,
                     "Avg Cost": statistics.mean(objectives) if objectives else None,
-                    "Best Cost": best_cost_so_far if best_cost_so_far != float('inf') else None,
-                    "CPU Time (s)": statistics.mean(cpu_times),
+                    # "Best Cost" and "Best Routes" removed
+                    "CPU Time (s)": statistics.mean(cpu_times) if cpu_times else None,
                     "Repetitions": reps, 
-                    "Best Routes": best_routes_so_far
                 })
         
         # --- C. Metric Calculation & Reporting ---
@@ -316,9 +307,8 @@ if st.session_state.run_benchmark:
             st.header("Benchmark Results")
             df = pd.DataFrame(results_list)
             
-            # --- UPDATED: Calculate gap for Avg and Best cost ---
+            # --- UPDATED: Calculate gap for Avg cost only ---
             df["Avg Cost Gap (%)"] = ((df["Avg Cost"] - bks_cost) / bks_cost) * 100.0
-            df["Best Cost Gap (%)"] = ((df["Best Cost"] - bks_cost) / bks_cost) * 100.0
             
             try:
                 baseline_time = df[df["Algorithm"] == "Baseline (C&W)"]["CPU Time (s)"].iloc[0]
@@ -326,26 +316,22 @@ if st.session_state.run_benchmark:
                 
                 # --- UPDATED: New column order ---
                 df = df[[
-                    "Algorithm", "Best Cost", "Best Cost Gap (%)", "Avg Cost", "Avg Cost Gap (%)", 
+                    "Algorithm", "Avg Cost", "Avg Cost Gap (%)", 
                     "CPU Time (s)", "Time vs. Baseline", "Repetitions"
                 ]]
                 format_dict = {
                     "Avg Cost": "{:,.2f}",
-                    "Best Cost": "{:,.2f}",
                     "Avg Cost Gap (%)": "{:.4f}%",
-                    "Best Cost Gap (%)": "{:.4f}%",
                     "CPU Time (s)": "{:.6f}",
                     "Time vs. Baseline": "{:.4f}",
                     "Repetitions": "{:d}"
                 }
             except (IndexError, KeyError):
                 st.warning("Baseline (C&W) was not run. Cannot calculate 'Time vs. Baseline'.")
-                df = df[["Algorithm", "Best Cost", "Best Cost Gap (%)", "Avg Cost", "Avg Cost Gap (%)", "CPU Time (s)", "Repetitions"]]
+                df = df[["Algorithm", "Avg Cost", "Avg Cost Gap (%)", "CPU Time (s)", "Repetitions"]]
                 format_dict = {
                     "Avg Cost": "{:,.2f}",
-                    "Best Cost": "{:,.2f}",
                     "Avg Cost Gap (%)": "{:.4f}%",
-                    "Best Cost Gap (%)": "{:.4f}%",
                     "CPU Time (s)": "{:.6f}",
                     "Repetitions": "{:d}"
                 }
@@ -359,46 +345,13 @@ if st.session_state.run_benchmark:
             
             st.info(f"""
             **How to Read This Table:**
-            * **Best Cost:** The best solution (lowest cost) found across all repetitions.
-            * **Best Cost Gap (%):** Percent difference from the BKS ({bks_cost}). **This is the main quality metric.**
             * **Avg Cost:** The average solution cost across all repetitions.
+            * **Avg Cost Gap (%):** Percent difference from the BKS ({bks_cost}).
             * **CPU Time (s):** The average CPU time per run.
             * **Time vs. Baseline:** How many times slower/faster the algorithm was compared to the Baseline.
             """)
 
-            # --- NEW: Solution Comparison Section ---
-            st.header("Solution Route Comparison")
-            st.write("Compare the BKS routes with the best routes found by each algorithm.")
-
-            # Get the best *overall* algorithm from the results
-            try:
-                best_algo_row = df.loc[df['Best Cost'].idxmin()]
-                best_algo_name = best_algo_row['Algorithm']
-                best_algo_cost = best_algo_row['Best Cost']
-                best_algo_routes = best_algo_row['Best Routes']
-            except ValueError:
-                best_algo_name = "N/A"
-                best_algo_cost = 0
-                best_algo_routes = ["No solution found"]
-
-            # Display BKS vs. Best Algorithm
-            col1, col2 = st.columns(2)
-            with col1:
-                st.info(f"**Best Known Solution (BKS)**\n\nCost: **{bks_cost}**")
-                with st.expander("Show BKS Routes"):
-                    st.code("\n".join(bks_routes), language="text")
-            
-            with col2:
-                st.success(f"**Best Found: {best_algo_name}**\n\nCost: **{best_algo_cost:,.2f}**")
-                with st.expander("Show Best Found Routes"):
-                    st.code("\n".join(best_algo_routes or ["No solution found."]), language="text")
-            
-            # --- NEW: Per-Algorithm Solution Expander ---
-            st.subheader("All Algorithm Solutions")
-            for _, row in df.iterrows():
-                with st.expander(f"**{row['Algorithm']}** (Best Cost: {row['Best Cost']:,.2f})"):
-                    st.code("\n".join(row['Best Routes'] or ["No solution found."]), language="text")
-            # ---
+            # --- NEW: Solution Comparison Section (REMOVED) ---
             
             with st.expander("Show Configuration"):
                 st.subheader("General Settings Used")
@@ -421,18 +374,14 @@ elif st.session_state.results_df is not None:
     st.header("Last Benchmark Results")
     
     format_dict = {
-        "Cost": "{:,.2f}",
+        # "Cost" key removed, "Avg Cost" is used
         "CPU Time (s)": "{:.6f}",
         "Repetitions": "{:d}"
     }
-    if "BKS Gap (%)" in st.session_state.results_df.columns:
-         format_dict["BKS Gap (%)"] = "{:.4f}%"
-    if "Best Cost Gap (%)" in st.session_state.results_df.columns:
-         format_dict["Best Cost Gap (%)"] = "{:.4f}%"
+    if "Avg Cost Gap (%)" in st.session_state.results_df.columns:
+         format_dict["Avg Cost Gap (%)"] = "{:.4f}%"
     if "Avg Cost" in st.session_state.results_df.columns:
          format_dict["Avg Cost"] = "{:,.2f}"
-    if "Best Cost" in st.session_state.results_df.columns:
-         format_dict["Best Cost"] = "{:,.2f}"
     if "Time vs. Baseline" in st.session_state.results_df.columns:
          format_dict["Time vs. Baseline"] = "{:.4f}"
 
