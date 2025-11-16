@@ -1,6 +1,6 @@
+import instance_data_parser
 import streamlit as st
 import pandas as pd
-import instance_data_parser
 import baseline_solver
 import gls_solver
 import sa_solver
@@ -109,14 +109,10 @@ with st.sidebar:
         help="Number of times each algorithm is run to average results."
     ) if set_reps_general else 1
 
-    # --- UPDATED: Default is now TRUE and 5s ---
-    set_time_limit_general = st.checkbox("Set time limit (seconds)", value=True)
-    if set_time_limit_general:
-        time_general = st.number_input(
+    set_time_limit_general = st.checkbox("Set time limit (seconds)", value=False)
+    time_general = st.number_input(
             "Time limit (seconds)", min_value=1, value=5, step=1
-        )
-    else:
-        time_general = None
+        ) if set_time_limit_general else None
 
     set_solution_limit_general = st.checkbox("Set solution limit (number of solutions)", value=False)
     solution_general = st.number_input(
@@ -185,7 +181,7 @@ if st.session_state.run_benchmark:
         # --- UPDATED: Load data by opening file paths ---
         try:
             with open(vrp_path, 'r') as f:
-                instance_data = instance_data_parser.load_vrp_instance(f)  # <--- RENAMED
+                instance_data = instance_data_parser.load_vrp_instance(f)
             instance_name = selected_instance_name
             
             with open(sol_path, 'r') as f:
