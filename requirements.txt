@@ -1,0 +1,7 @@
+ortools>=9.0.0
+pandas>=1.0.0
+streamlit>=1.0.0
+
+# Optional: pin tighter versions if you want reproducible environments.
+# Example:
+# ortools==9.5.2237
