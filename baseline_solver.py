@@ -56,7 +56,7 @@ def solve_baseline(data, **kwargs):
         routing_enums_pb2.LocalSearchMetaheuristic.UNSET)
         
     # 3. Force the solver to stop after *ten* solutions are found
-    search_parameters.time_limit.seconds = 5
+    search_parameters.time_limit.seconds = 20
     
     # NOTE: We explicitly DO NOT set a time limit.
     
