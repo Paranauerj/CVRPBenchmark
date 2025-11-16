@@ -71,7 +71,8 @@ with st.sidebar:
     else:
         reps_general = 1 # Default to 1 if not set
 
-    set_time_limit_general = st.checkbox("Set time limit (seconds)", value=False)
+    # --- UPDATED: Default time limit checkbox is now True and value is 5 ---
+    set_time_limit_general = st.checkbox("Set time limit (seconds)", value=True)
     if set_time_limit_general:
         time_general = st.number_input(
             "Time limit (seconds)", min_value=1, value=5, step=1
@@ -171,7 +172,7 @@ if st.button("🚀 Run Benchmark", type="primary"):
         results_list.append({
             "Algorithm": algo_name,
             "Cost": statistics.mean(objectives),
-            "Local CPU Time (s)": statistics.mean(cpu_times),
+            "CPU Time (s)": statistics.mean(cpu_times), # <--- RENAMED
             "Repetitions": reps, # Also store reps in result
         })
     
@@ -181,14 +182,15 @@ if st.button("🚀 Run Benchmark", type="primary"):
     # --- C. Metric Calculation & Reporting ---
     df = pd.DataFrame(results_list)
     
-    baseline_time = df[df["Algorithm"] == "Baseline (C&W)"]["Local CPU Time (s)"].iloc[0]
-    df["Time vs. Baseline"] = df["Local CPU Time (s)"] / baseline_time
+    # --- UPDATED: Using new column name ---
+    baseline_time = df[df["Algorithm"] == "Baseline (C&W)"]["CPU Time (s)"].iloc[0]
+    df["Time vs. Baseline"] = df["CPU Time (s)"] / baseline_time
     
     # Reorder columns for display
     df = df[[
         "Algorithm", 
         "Cost", 
-        "Local CPU Time (s)", 
+        "CPU Time (s)", # <--- RENAMED
         "Time vs. Baseline",
         "Repetitions"
     ]]
@@ -196,7 +198,7 @@ if st.button("🚀 Run Benchmark", type="primary"):
     st.dataframe(
         df.style.format({
             "Cost": "{:,.2f}",
-            "Local CPU Time (s)": "{:.6f}",
+            "CPU Time (s)": "{:.6f}", # <--- RENAMED
             "Time vs. Baseline": "{:.4f}",
             "Repetitions": "{:d}"
         }),
@@ -206,7 +208,7 @@ if st.button("🚀 Run Benchmark", type="primary"):
     st.info(f"""
     **How to Read This Table:**
     * **Cost:** The final solution (total distance). **Lower is better.**
-    * **Local CPU Time (s):** The actual CPU time taken by the algorithm.
+    * **CPU Time (s):** The actual CPU time taken by the algorithm. # <--- RENAMED
     * **Time vs. Baseline:** How many times slower/faster the algorithm was compared to the simple Baseline (C&W).
     """)
 
