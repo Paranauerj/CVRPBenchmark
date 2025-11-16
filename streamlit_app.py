@@ -120,21 +120,26 @@ with st.sidebar:
                 "solution": solution_val
             }
     
-    # --- NEW: Start/Stop Buttons ---
-    st.header("Controls")
-    col1, col2 = st.columns(2)
-    
-    if col1.button("🚀 Run Benchmark", type="primary", use_container_width=True):
-        if not algorithms_to_run_other:
-             st.toast("Warning: Running baseline only.", icon="⚠️")
-        st.session_state.run_benchmark = True
-        st.session_state.results_df = None # Clear old results
-        st.rerun()
+    # --- Buttons moved to main page ---
 
-    if col2.button("⏹️ Stop Benchmark", use_container_width=True):
-        st.session_state.run_benchmark = False
-        # No rerun needed, the loop will just stop
-        st.toast("Stopping benchmark...")
+
+# --- Main Page ---
+
+# --- NEW: Start/Stop Buttons (Moved to Main Page) ---
+st.header("Controls")
+col1, col2 = st.columns(2)
+
+if col1.button("🚀 Run Benchmark", type="primary", use_container_width=True):
+    if not algorithms_to_run_other:
+            st.toast("Warning: Running baseline only.", icon="⚠️")
+    st.session_state.run_benchmark = True
+    st.session_state.results_df = None # Clear old results
+    st.rerun()
+
+if col2.button("⏹️ Stop Benchmark", use_container_width=True):
+    st.session_state.run_benchmark = False
+    # No rerun needed, the loop will just stop
+    st.toast("Stopping benchmark...")
 
 
 # --- Main Page (State-Driven Logic) ---
