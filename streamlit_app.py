@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import instance_data_parser 
+import instance_data_parser
 import baseline_solver
 import gls_solver
 import sa_solver
@@ -109,8 +109,8 @@ with st.sidebar:
         help="Number of times each algorithm is run to average results."
     ) if set_reps_general else 1
 
-    # --- UPDATED: Default is now False ---
-    set_time_limit_general = st.checkbox("Set time limit (seconds)", value=False)
+    # --- UPDATED: Default is now TRUE and 5s ---
+    set_time_limit_general = st.checkbox("Set time limit (seconds)", value=True)
     if set_time_limit_general:
         time_general = st.number_input(
             "Time limit (seconds)", min_value=1, value=5, step=1
@@ -185,7 +185,7 @@ if st.session_state.run_benchmark:
         # --- UPDATED: Load data by opening file paths ---
         try:
             with open(vrp_path, 'r') as f:
-                instance_data = instance_data_parser.load_vrp_instance(f)  # <--- FIXED (was instance_data_parser)
+                instance_data = instance_data_parser.load_vrp_instance(f)  # <--- RENAMED
             instance_name = selected_instance_name
             
             with open(sol_path, 'r') as f:
@@ -198,6 +198,34 @@ if st.session_state.run_benchmark:
             st.stop() # Stop execution
         
         st.header("Running Experiment...")
+
+        # --- NEW: VALIDATION STEP ---
+        # Check that every non-baseline algorithm has at least one limit
+        validation_passed = True
+        for algo_name in algorithms_to_run:
+            if algo_name == "Baseline (C&W)":
+                continue # Baseline doesn't need limits
+
+            # Determine final limits for this algo
+            time_limit = per_algo_overrides.get(algo_name, {}).get("time") or time_general
+            solution_limit = per_algo_overrides.get(algo_name, {}).get("solution") or solution_general
+            
+            # If no limits are set, this is an error
+            if time_limit is None and solution_limit is None:
+                st.error(
+                    f"**Validation Error:** Algorithm '{algo_name}' has no limits set. "
+                    "Please set a general time/solution limit, or set an override for this algorithm, "
+                    "to prevent a potentially infinite run."
+                )
+                st.session_state.run_benchmark = False
+                validation_passed = False
+                break # Stop checking other algorithms
+
+        if not validation_passed:
+            st.stop() # Stop the script execution if validation failed
+        
+        # --- END OF VALIDATION STEP ---
+        
         st.info(f"Instance: **{instance_name}** | Best Known Solution (BKS) Cost: **{bks_cost}**")
         status_bar = st.container()
         results_list = [] 
