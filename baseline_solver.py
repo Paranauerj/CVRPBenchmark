@@ -53,7 +53,7 @@ def solve_baseline(data, **kwargs):
         
     # 2. Disable all local search to get the pure heuristic result
     search_parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.NO_LOCAL_SEARCH)
+        routing_enums_pb2.LocalSearchMetaheuristic.UNSET)
         
     # 3. Force the solver to stop after *one* solution is found
     search_parameters.solution_limit = 1
