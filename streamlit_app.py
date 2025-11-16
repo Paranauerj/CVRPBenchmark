@@ -1,6 +1,6 @@
+import instance_data_parser
 import streamlit as st
 import pandas as pd
-import data_model 
 import baseline_solver
 import gls_solver
 import sa_solver
@@ -181,7 +181,7 @@ if st.session_state.run_benchmark:
         # --- UPDATED: Load data by opening file paths ---
         try:
             with open(vrp_path, 'r') as f:
-                instance_data = data_model.load_vrp_instance(f)
+                instance_data = instance_data_parser.load_vrp_instance(f)
             instance_name = selected_instance_name
             
             with open(sol_path, 'r') as f:

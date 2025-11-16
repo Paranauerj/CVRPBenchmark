@@ -1,8 +1,8 @@
 import time
 import statistics
-import data_model 
 import baseline_solver
 import gls_solver
+import instance_data_parser
 import sa_solver
 import ts_solver
 import solution_parser # --- NEW IMPORT ---
@@ -27,7 +27,7 @@ def run_agnostic_benchmark(instance_filepath, solution_filepath):
     # --- Load problem instance from file ---
     try:
         with open(instance_filepath, 'r') as f:
-            instance_data = data_model.load_vrp_instance(f)
+            instance_data = instance_data_parser.load_vrp_instance(f)
         instance_name = instance_filepath
     except FileNotFoundError:
         print(f"Error: Instance file not found at '{instance_filepath}'")
