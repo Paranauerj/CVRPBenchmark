@@ -14,10 +14,10 @@ st.set_page_config(
     layout="wide"
 )
 
-st.title("Hardware-Agnostic CVRP Benchmarker 📊")
+st.title("CVRP Solver Benchmarker 📊")
 st.write("""
-This app runs CVRP solvers and normalizes their execution time using PassMark 
-Single Thread scores to allow for fair, hardware-agnostic comparisons.
+This app runs various CVRP solvers and compares their performance 
+in terms of solution cost and execution time.
 """)
 
 # --- Algorithm Mapping ---
@@ -29,23 +29,14 @@ ALGORITHM_MAP = {
     "Tabu Search": ts_solver.solve_ts,
 }
 
+# Get all algorithms EXCEPT the baseline for the multi-select
+other_algorithms = list(ALGORITHM_MAP.keys())
+other_algorithms.remove("Baseline (C&W)")
+
+
 # --- Sidebar Inputs ---
 with st.sidebar:
     st.header("1. Benchmark Configuration")
-    
-    st.subheader("PassMark Scores")
-    s_base = st.number_input(
-        "Reference Score (s_base)", 
-        min_value=1, 
-        value=2000, # <--- UPDATED DEFAULT VALUE
-        help="Single-thread score of the reference machine."
-    )
-    s_local = st.number_input(
-        "Your Local Score (s_local)", 
-        min_value=1, 
-        value=2476, 
-        help="Single-thread score of this machine (e.g., i5-9400F)."
-    )
     
     st.subheader("Experiment Settings")
     instance_name = st.selectbox(
@@ -53,9 +44,27 @@ with st.sidebar:
         ["P-n16-k8"], 
         help="Select the problem instance to solve."
     )
-    # Repetitions: allow the user to optionally set repetitions (iterations)
-    custom_reps = st.checkbox("Set custom repetitions (iterations)", value=False)
-    if custom_reps:
+    
+    st.subheader("2. Select Algorithms")
+    
+    # --- UPDATED: Baseline is always selected and disabled ---
+    st.checkbox("Baseline (C&W)", value=True, disabled=True, help="The Baseline is required for relative time calculations.")
+    
+    algorithms_to_run_other = st.multiselect(
+        "Choose additional algorithms to test:",
+        options=other_algorithms,
+        default=other_algorithms
+    )
+    
+    # Combine the (always-on) baseline with the user's other selections
+    algorithms_to_run = ["Baseline (C&W)"] + algorithms_to_run_other
+
+    # --- UPDATED: Moved Repetitions here ---
+    st.subheader("3. Optional Parameters")
+    st.write("Leave unchecked to use defaults (1 repetition, no limits).")
+
+    set_reps = st.checkbox("Set custom repetitions", value=False)
+    if set_reps:
         num_repetitions = st.number_input(
             "Repetitions per Algorithm",
             min_value=1,
@@ -63,27 +72,12 @@ with st.sidebar:
             help="Number of times each algorithm is run to average results."
         )
     else:
-        # Keep None to indicate not set; the caller can decide default behavior
-        num_repetitions = None
-    
-    st.subheader("2. Select Algorithms")
-    algorithms_to_run = st.multiselect(
-        "Choose algorithms to test:",
-        options=list(ALGORITHM_MAP.keys()),
-        default=list(ALGORITHM_MAP.keys())
-    )
-    
-    st.warning("""
-    **Note:** This app assumes you have manually set the time limits 
-    inside the `gls_solver.py`, `sa_solver.py`, etc. files.
-    """)
+        num_repetitions = 1 # Default to 1 if not set
 
-    st.subheader("Optional Solver Limits")
-    st.write("Leave unchecked to keep OR-Tools defaults (no override).")
     set_time_limit = st.checkbox("Set time limit (seconds)", value=False)
     if set_time_limit:
         ui_time_limit_seconds = st.number_input(
-            "Time limit (seconds)", min_value=0, value=5, step=1
+            "Time limit (seconds)", min_value=1, value=5, step=1
         )
     else:
         ui_time_limit_seconds = None
@@ -95,111 +89,105 @@ with st.sidebar:
         )
     else:
         ui_solution_limit = None
+        
+    st.warning("""
+    **Note:** If you don't set optional limits here, the app will use
+    the hard-coded limits inside each solver file (e.g., `gls_solver.py`).
+    """)
+
 
 # --- Main Page ---
 if st.button("🚀 Run Benchmark", type="primary"):
     
-    if not algorithms_to_run:
-        st.error("Please select at least one algorithm to run.")
-    else:
-        # Load data
-        instance_data = data_model.create_data_model()
+    # We know at least the baseline is selected, so no need to check for empty list
+    
+    # Load data
+    instance_data = data_model.create_data_model()
+    
+    st.header("Running Experiment...")
+    status_bar = st.container()
+    results_list = [] # To store dicts for the DataFrame
 
-        st.header("Running Experiment...")
-        status_bar = st.container()
-        results_list = []  # To store dicts for the DataFrame
+    # --- B. Execution and Data Collection ---
+    progress_bar = st.progress(0.0)
+    total_runs = len(algorithms_to_run) * num_repetitions
+    current_run = 0
 
-        # --- B. Execution and Data Collection ---
-        progress_bar = st.progress(0.0)
-        # If repetitions not set, default to 1 run per algorithm
-        reps = num_repetitions if num_repetitions is not None else 1
-        total_runs = len(algorithms_to_run) * reps
-        current_run = 0
+    for algo_name in algorithms_to_run:
+        algo_func = ALGORITHM_MAP[algo_name]
+        cpu_times, objectives = [], []
+        status_bar.text(f"Testing Algorithm: {algo_name}...")
+        
+        for i in range(num_repetitions):
+            # Update progress
+            current_run += 1
+            progress_bar.progress(
+                current_run / total_runs, 
+                text=f"Running {algo_name} (Rep {i+1}/{num_repetitions})"
+            )
+            
+            # Build solver_kwargs only with provided (non-None) values
+            solver_kwargs = {}
+            if ui_time_limit_seconds is not None:
+                solver_kwargs["time_limit_seconds"] = ui_time_limit_seconds
+            if ui_solution_limit is not None:
+                solver_kwargs["solution_limit"] = ui_solution_limit
+            
+            # Pass kwargs to the execution function
+            measurement = execute_and_measure(algo_func, instance_data, **solver_kwargs)
+            cpu_times.append(measurement["cpu_time"])
+            objectives.append(measurement["objective_value"])
 
-        for algo_name in algorithms_to_run:
-            algo_func = ALGORITHM_MAP[algo_name]
-            cpu_times, objectives = [], []
-            status_bar.text(f"Testing Algorithm: {algo_name}...")
+        # Store the averages
+        results_list.append({
+            "Algorithm": algo_name,
+            "Cost": statistics.mean(objectives),
+            "Local CPU Time (s)": statistics.mean(cpu_times),
+        })
+    
+    progress_bar.progress(1.0, text="Benchmark Complete!")
+    st.header("Benchmark Results")
 
-            for i in range(reps):
-                # Update progress
-                current_run += 1
-                progress_bar.progress(
-                    current_run / total_runs,
-                    text=f"Running {algo_name} (Rep {i+1}/{reps})",
-                )
+    # --- C. Metric Calculation & Reporting ---
+    df = pd.DataFrame(results_list)
+    
+    # Get baseline time for relative calculations
+    # We know baseline is in the list, so we can safely get its time
+    baseline_time = df[df["Algorithm"] == "Baseline (C&W)"]["Local CPU Time (s)"].iloc[0]
+    
+    # --- REMOVED Normalized Time ---
+    
+    # 2. Time Relative to the Baseline
+    df["Time vs. Baseline"] = df["Local CPU Time (s)"] / baseline_time
+    
+    # Reorder columns for display
+    df = df[[
+        "Algorithm", 
+        "Cost", 
+        "Local CPU Time (s)", 
+        "Time vs. Baseline"
+    ]]
 
-                # Build solver_kwargs only with provided (non-None) values
-                solver_kwargs = {}
-                if ui_time_limit_seconds is not None:
-                    solver_kwargs["time_limit_seconds"] = ui_time_limit_seconds
-                if ui_solution_limit is not None:
-                    solver_kwargs["solution_limit"] = ui_solution_limit
+    st.dataframe(
+        df.style.format({
+            "Cost": "{:,.2f}",
+            "Local CPU Time (s)": "{:.6f}",
+            "Time vs. Baseline": "{:.4f}",
+        }),
+        use_container_width=True
+    )
+    
+    st.info(f"""
+    **How to Read This Table:**
+    * **Cost:** The final solution (total distance). **Lower is better.**
+    * **Local CPU Time (s):** The actual CPU time taken by the algorithm.
+    * **Time vs. Baseline:** How many times slower/faster the algorithm was compared to the simple Baseline (C&W).
+    """)
 
-                measurement = execute_and_measure(algo_func, instance_data, **solver_kwargs)
-                cpu_times.append(measurement["cpu_time"])
-                objectives.append(measurement["objective_value"])
-
-            # Store the averages
-            results_list.append({
-                "Algorithm": algo_name,
-                "Cost": statistics.mean(objectives),
-                "Local CPU Time (s)": statistics.mean(cpu_times),
-            })
-
-        progress_bar.progress(1.0, text="Benchmark Complete!")
-        st.header("Benchmark Results")
-
-        # --- C. Metric Calculation & Reporting ---
-        df = pd.DataFrame(results_list)
-
-        # Get baseline time for relative calculations
-        try:
-            baseline_time = df[df["Algorithm"] == "Baseline (C&W)"]["Local CPU Time (s)"].iloc[0]
-        except (IndexError, KeyError):
-            st.warning("Baseline (C&W) not run. Cannot calculate 'Time vs. Baseline'.")
-            baseline_time = 1.0  # Avoid division by zero
-
-        # 1. Normalized Runtime (Eq 2)
-        # t_norm = t_local * (s_local / s_base)
-        df["Normalized Time (s)"] = df["Local CPU Time (s)"] * (s_local / s_base)
-
-        # 2. Time Relative to the Baseline
-        df["Time vs. Baseline"] = df["Local CPU Time (s)"] / baseline_time
-
-        # Reorder columns for display
-        df = df[[
-            "Algorithm",
-            "Cost",
-            "Local CPU Time (s)",
-            "Normalized Time (s)",
-            "Time vs. Baseline",
-        ]]
-
-        st.dataframe(
-            df.style.format({
-                "Cost": "{:,.2f}",
-                "Local CPU Time (s)": "{:.6f}",
-                "Normalized Time (s)": "{:.6f}",
-                "Time vs. Baseline": "{:.4f}",
-            }),
-            use_container_width=True,
-        )
-
-        st.info(f"""
-        **How to Read This Table:**
-        * **Cost:** The final solution (total distance). **Lower is better.**
-        * **Local CPU Time (s):** The actual time your CPU (i5-9400F) took.
-        * **Normalized Time (s):** The *virtual* time it would have taken on the reference machine (i9-13900KS). **This is the number to use when comparing to other research.**
-        * **Time vs. Baseline:** How many times slower/faster the algorithm was compared to the simple Baseline (C&W).
-        """)
-
-        with st.expander("Show Configuration"):
-            st.json({
-                "Reference Score (s_base)": s_base,
-                "Local Score (s_local)": s_local,
-                "Instance": instance_name,
-                "Repetitions": num_repetitions,
-                "Repetitions (used)": reps,
-                "Normalization Ratio (s_local / s_base)": (s_local / s_base),
-            })
+    with st.expander("Show Configuration"):
+        st.json({
+            "Instance": instance_name,
+            "Repetitions": num_repetitions,
+            "Time Limit (override)": ui_time_limit_seconds,
+            "Solution Limit (override)": ui_solution_limit
+        })
