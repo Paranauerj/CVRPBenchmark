@@ -3,7 +3,7 @@ from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 from baseline_solver import _create_routing_model # Reuse the setup function
 
-def solve_ts(data, time_limit_seconds=5, solution_limit=None):
+def solve_ts(data, time_limit_seconds=None, solution_limit=None):
     """Solves the CVRP using Tabu Search (TS)."""
     
     manager, routing = _create_routing_model(data)
