@@ -11,7 +11,7 @@ import statistics
 import glob
 import os
 import math
-# --- plotting import removed ---
+# plotting import removed
 
 # --- Page Configuration ---
 st.set_page_config(
@@ -25,7 +25,7 @@ if 'run_benchmark' not in st.session_state:
 if 'results_df' not in st.session_state:
     st.session_state.results_df = None
 
-# --- (find_instance_files function is unchanged) ---
+# --- NEW: Function to find and match instance files ---
 @st.cache_data # Cache this so it only runs once
 def find_instance_files(directory="instances"):
     """
@@ -51,8 +51,6 @@ def find_instance_files(directory="instances"):
             }
             
     return valid_instance_names, instance_path_map
-
-# --- NEW: Plotting Function (REMOVED) ---
 
 st.title("CVRP Solver Benchmarker 📊")
 st.write("""
@@ -170,7 +168,7 @@ if not files_selected:
     st.warning("No instance files found. Please create an 'instances' folder and add matching .vrp and .sol files.")
 
 
-# ... (rest of UI layout, sidebar, and controls are unchanged) ...
+# --- Main Page (State-Driven Logic) ---
 if st.session_state.run_benchmark:
     
     # --- UPDATED: Get file paths from map ---
@@ -197,32 +195,20 @@ if st.session_state.run_benchmark:
             st.exception(e)
             st.session_state.run_benchmark = False
             st.stop() # Stop execution
-        
-        st.header("Running Experiment...")
-
-        # --- NEW: VALIDATION STEP ---
-        # Check that every non-baseline algorithm has at least one limit
+            
+        # --- Validation Step ---
         validation_passed = True
-        # --- UPDATED: Loop over other_algorithms to skip baseline ---
-        for algo_name in algorithms_to_run_other:
-            # Determine final limits for this algo
+        for algo_name in algorithms_to_run_other: # Only check non-baseline
             time_limit = per_algo_overrides.get(algo_name, {}).get("time") or time_general
             solution_limit = per_algo_overrides.get(algo_name, {}).get("solution") or solution_general
             
-            # If no limits are set, this is an error
             if time_limit is None and solution_limit is None:
-                st.error(
-                    f"**Validation Error:** Algorithm '{algo_name}' has no limits set. "
-                    "Please set a general time/solution limit, or set an override for this algorithm, "
-                    "to prevent a potentially infinite run."
-                )
-                st.session_state.run_benchmark = False
+                st.error(f"Validation Error: Algorithm '{algo_name}' has no limits set. Please set a general or specific time/solution limit.")
                 validation_passed = False
-                break # Stop checking other algorithms
-
-        if not validation_passed:
-            st.stop() # Stop the script execution if validation failed
+                st.session_state.run_benchmark = False
         
+        if not validation_passed:
+            st.stop()
         # --- END OF VALIDATION STEP ---
         
         st.info(f"Instance: **{instance_name}** | Best Known Solution (BKS) Cost: **{bks_cost}**")
@@ -234,9 +220,12 @@ if st.session_state.run_benchmark:
         total_runs = 0
         reps_to_run = {}
         for algo_name in algorithms_to_run:
-            reps = per_algo_overrides.get(algo_name, {}).get("reps") or reps_general
-            reps_to_run[algo_name] = reps
-            total_runs += reps
+            if algo_name == "Baseline (C&W)":
+                reps_to_run[algo_name] = 1 # Baseline only ever runs once
+            else:
+                reps = per_algo_overrides.get(algo_name, {}).get("reps") or reps_general
+                reps_to_run[algo_name] = reps
+            total_runs += reps_to_run[algo_name]
 
         progress_bar = st.progress(0.0)
         current_run = 0
@@ -250,26 +239,21 @@ if st.session_state.run_benchmark:
             cpu_times, objectives = [], []
             status_bar.text(f"Testing Algorithm: {algo_name}...")
             
-            # --- REMOVED: "Best solution" tracking ---
-            
-            reps = reps_to_run[algo_name]
-            
-            # --- UPDATED: Special handling for baseline ---
-            # This is the *single* definition of solver_kwargs,
-            # defined *outside* the repetitions loop.
+            # --- UPDATED: Corrected logic for baseline ---
             if algo_name == "Baseline (C&W)":
-                # Baseline is not configurable and should have no limits
-                solver_kwargs = {}
+                reps = 1
+                solver_kwargs = {} # Pass no limits
             else:
-                # Get final parameters for metaheuristics
+                reps = reps_to_run[algo_name]
                 time_limit = per_algo_overrides.get(algo_name, {}).get("time") or time_general
                 solution_limit = per_algo_overrides.get(algo_name, {}).get("solution") or solution_general
-                
+            
                 solver_kwargs = {}
                 if time_limit is not None:
                     solver_kwargs["time_limit_seconds"] = time_limit
                 if solution_limit is not None:
                     solver_kwargs["solution_limit"] = solution_limit
+            # ---
             
             for i in range(reps):
                 if not st.session_state.run_benchmark:
@@ -283,21 +267,23 @@ if st.session_state.run_benchmark:
                 )
                 
                 measurement = execute_and_measure(algo_func, instance_data, **solver_kwargs)
-                cpu_times.append(measurement["cpu_time"])
                 
-                # --- UPDATED: Check for None ---
                 if measurement["objective_value"] is not None:
                     objectives.append(measurement["objective_value"])
-                # ---
+                
+                if measurement["cpu_time"] is not None:
+                     cpu_times.append(measurement["cpu_time"])
                 
             if not st.session_state.run_benchmark:
                 break
             
             if cpu_times: 
+                # --- FIX: Filter None values from objectives before calculating mean ---
+                valid_objectives = [obj for obj in objectives if obj is not None]
+                
                 results_list.append({
                     "Algorithm": algo_name,
-                    "Avg Cost": statistics.mean(objectives) if objectives else None,
-                    # "Best Cost" and "Best Routes" removed
+                    "Avg Cost": statistics.mean(valid_objectives) if valid_objectives else None,
                     "CPU Time (s)": statistics.mean(cpu_times) if cpu_times else None,
                     "Repetitions": reps, 
                 })
@@ -308,7 +294,13 @@ if st.session_state.run_benchmark:
             df = pd.DataFrame(results_list)
             
             # --- UPDATED: Calculate gap for Avg cost only ---
-            df["Avg Cost Gap (%)"] = ((df["Avg Cost"] - bks_cost) / bks_cost) * 100.0
+            if "Avg Cost" in df.columns and bks_cost is not None:
+                # Handle cases where Avg Cost might be None (if all runs failed)
+                df["Avg Cost Gap (%)"] = df["Avg Cost"].apply(
+                    lambda cost: ((cost - bks_cost) / bks_cost) * 100.0 if cost is not None else None
+                )
+            else:
+                df["Avg Cost Gap (%)"] = None
             
             try:
                 baseline_time = df[df["Algorithm"] == "Baseline (C&W)"]["CPU Time (s)"].iloc[0]
@@ -326,8 +318,8 @@ if st.session_state.run_benchmark:
                     "Time vs. Baseline": "{:.4f}",
                     "Repetitions": "{:d}"
                 }
-            except (IndexError, KeyError):
-                st.warning("Baseline (C&W) was not run. Cannot calculate 'Time vs. Baseline'.")
+            except (IndexError, KeyError, TypeError):
+                st.warning("Baseline (C&W) was not run or failed. Cannot calculate 'Time vs. Baseline'.")
                 df = df[["Algorithm", "Avg Cost", "Avg Cost Gap (%)", "CPU Time (s)", "Repetitions"]]
                 format_dict = {
                     "Avg Cost": "{:,.2f}",
@@ -339,7 +331,7 @@ if st.session_state.run_benchmark:
             st.session_state.results_df = df
             
             st.dataframe(
-                df.style.format(format_dict),
+                df.style.format(format_dict, na_rep="N/A"),
                 use_container_width=True
             )
             
@@ -351,7 +343,7 @@ if st.session_state.run_benchmark:
             * **Time vs. Baseline:** How many times slower/faster the algorithm was compared to the Baseline.
             """)
 
-            # --- NEW: Solution Comparison Section (REMOVED) ---
+            # --- Solution Comparison Section (REMOVED) ---
             
             with st.expander("Show Configuration"):
                 st.subheader("General Settings Used")
@@ -374,7 +366,6 @@ elif st.session_state.results_df is not None:
     st.header("Last Benchmark Results")
     
     format_dict = {
-        # "Cost" key removed, "Avg Cost" is used
         "CPU Time (s)": "{:.6f}",
         "Repetitions": "{:d}"
     }
@@ -386,6 +377,6 @@ elif st.session_state.results_df is not None:
          format_dict["Time vs. Baseline"] = "{:.4f}"
 
     st.dataframe(
-        st.session_state.results_df.style.format(format_dict),
+        st.session_state.results_df.style.format(format_dict, na_rep="N/A"),
         use_container_width=True
     )
