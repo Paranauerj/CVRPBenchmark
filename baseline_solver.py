@@ -32,7 +32,7 @@ def _create_routing_model(data):
         
     return manager, routing
 
-def solve_baseline(data, time_limit_seconds=None, solution_limit=None):
+def solve_baseline(data, time_limit_seconds=5, solution_limit=None):
     """
     Solves the CVRP using the Clarke-Wright (SAVINGS) heuristic.
     Local search is disabled to keep it a pure, deterministic baseline.
