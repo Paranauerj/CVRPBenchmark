@@ -1,4 +1,3 @@
-# baseline_solver.py
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 
@@ -32,36 +31,55 @@ def _create_routing_model(data):
         
     return manager, routing
 
-def solve_baseline(data, time_limit_seconds=None, solution_limit=None):
+def solve_baseline(data, **kwargs):
     """
     Solves the CVRP using the Clarke-Wright (SAVINGS) heuristic.
-    Local search is disabled to keep it a pure, deterministic baseline.
+    
+    **kwargs is included to absorb any parameters from the benchmarker,
+    but they are NOT used, ensuring a consistent baseline.
+    
+    This solver is hard-coded to return the *first solution*
+    (the pure heuristic) with no local search and no time limit.
     """
     manager, routing = _create_routing_model(data)
     
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     
     # --- Baseline Configuration ---
-    # Use SAVINGS (Clarke & Wright) as the construction heuristic
+    
+    # 1. Use SAVINGS (Clarke & Wright) as the construction heuristic
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.SAVINGS)
         
-    # **CRITICAL**: Disable local search for a pure baseline
+    # 2. Disable all local search to get the pure heuristic result
     search_parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.UNSET)
+        routing_enums_pb2.LocalSearchMetaheuristic.NO_LOCAL_SEARCH)
+        
+    # 3. Force the solver to stop after *one* solution is found
+    search_parameters.solution_limit = 1
+    
+    # NOTE: We explicitly DO NOT set a time limit.
+    
     # ---
-
-    # Only set time/solution parameters if caller provided them. If not provided,
-    # leave the routing search parameters untouched so OR-Tools defaults apply.
-    if time_limit_seconds is not None:
-        search_parameters.time_limit.seconds = int(time_limit_seconds)
-
-    if solution_limit is not None:
-        search_parameters.solution_limit = int(solution_limit)
     
     solution = routing.SolveWithParameters(search_parameters)
     
     if solution:
-        return solution.ObjectiveValue()
+        # --- UPDATED: Extract and return routes ---
+        routes_list = []
+        for vehicle_id in range(routing.vehicles()):
+            route_nodes = []
+            index = routing.Start(vehicle_id)
+            while not routing.IsEnd(index):
+                node_index = manager.IndexToNode(index)
+                if node_index != data['depot']: # Do not include the depot in the route string
+                    route_nodes.append(str(node_index + 1)) # +1 to match .sol 1-indexing
+                index = solution.Value(routing.NextVar(index))
+            
+            if route_nodes: # If the route wasn't empty
+                routes_list.append("Route: " + " ".join(route_nodes))
+        
+        return solution.ObjectiveValue(), routes_list # Return a tuple
+        # ---
     else:
-        return None
+        return None, None
