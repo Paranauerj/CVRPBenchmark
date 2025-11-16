@@ -30,6 +30,19 @@ def run_agnostic_benchmark():
     # Number of repetitions for stable averages
     NUM_REPETITIONS = 5 
 
+    # --- Solver Limits (customize here) ---
+    # Global time limit (seconds)
+    TIME_LIMIT_SECONDS = 1
+
+    # Global solution limit (set to None to leave unset)
+    SOLUTION_LIMIT = 1000
+
+    # Optional: per-algorithm overrides (by algorithm display name)
+    algorithm_params = {
+        # Example: use different limits for GLS
+        # "Guided Local Search": {"time_limit_seconds": 10, "solution_limit": 2000},
+    }
+
     # Map algorithm names to their functions
     algorithms_to_test = {
         "Baseline (C&W)": baseline_solver.solve_baseline,
@@ -50,9 +63,19 @@ def run_agnostic_benchmark():
         print(f"  Testing Algorithm: {algo_name}...")
         
         for i in range(NUM_REPETITIONS):
+            # Build solver kwargs: start from global defaults, then apply any per-algo overrides
+            solver_kwargs = {
+                "time_limit_seconds": TIME_LIMIT_SECONDS,
+                "solution_limit": SOLUTION_LIMIT,
+            }
+            # Merge per-algorithm overrides if present
+            if algo_name in algorithm_params:
+                solver_kwargs.update(algorithm_params[algo_name])
+
             measurement = execute_and_measure(
-                algo_func, 
-                instance_data
+                algo_func,
+                instance_data,
+                **solver_kwargs,
             )
             cpu_times.append(measurement["cpu_time"])
             objectives.append(measurement["objective_value"])

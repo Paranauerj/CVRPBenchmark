@@ -53,11 +53,18 @@ with st.sidebar:
         ["P-n16-k8"], 
         help="Select the problem instance to solve."
     )
-    num_repetitions = st.number_input(
-        "Repetitions per Algorithm", 
-        min_value=1, 
-        value=5
-    )
+    # Repetitions: allow the user to optionally set repetitions (iterations)
+    custom_reps = st.checkbox("Set custom repetitions (iterations)", value=False)
+    if custom_reps:
+        num_repetitions = st.number_input(
+            "Repetitions per Algorithm",
+            min_value=1,
+            value=5,
+            help="Number of times each algorithm is run to average results."
+        )
+    else:
+        # Keep None to indicate not set; the caller can decide default behavior
+        num_repetitions = None
     
     st.subheader("2. Select Algorithms")
     algorithms_to_run = st.multiselect(
@@ -71,6 +78,24 @@ with st.sidebar:
     inside the `gls_solver.py`, `sa_solver.py`, etc. files.
     """)
 
+    st.subheader("Optional Solver Limits")
+    st.write("Leave unchecked to keep OR-Tools defaults (no override).")
+    set_time_limit = st.checkbox("Set time limit (seconds)", value=False)
+    if set_time_limit:
+        ui_time_limit_seconds = st.number_input(
+            "Time limit (seconds)", min_value=0, value=5, step=1
+        )
+    else:
+        ui_time_limit_seconds = None
+
+    set_solution_limit = st.checkbox("Set solution limit (number of solutions)", value=False)
+    if set_solution_limit:
+        ui_solution_limit = st.number_input(
+            "Solution limit", min_value=1, value=1000, step=1
+        )
+    else:
+        ui_solution_limit = None
+
 # --- Main Page ---
 if st.button("🚀 Run Benchmark", type="primary"):
     
@@ -79,30 +104,39 @@ if st.button("🚀 Run Benchmark", type="primary"):
     else:
         # Load data
         instance_data = data_model.create_data_model()
-        
+
         st.header("Running Experiment...")
         status_bar = st.container()
-        results_list = [] # To store dicts for the DataFrame
+        results_list = []  # To store dicts for the DataFrame
 
         # --- B. Execution and Data Collection ---
         progress_bar = st.progress(0.0)
-        total_runs = len(algorithms_to_run) * num_repetitions
+        # If repetitions not set, default to 1 run per algorithm
+        reps = num_repetitions if num_repetitions is not None else 1
+        total_runs = len(algorithms_to_run) * reps
         current_run = 0
 
         for algo_name in algorithms_to_run:
             algo_func = ALGORITHM_MAP[algo_name]
             cpu_times, objectives = [], []
             status_bar.text(f"Testing Algorithm: {algo_name}...")
-            
-            for i in range(num_repetitions):
+
+            for i in range(reps):
                 # Update progress
                 current_run += 1
                 progress_bar.progress(
-                    current_run / total_runs, 
-                    text=f"Running {algo_name} (Rep {i+1}/{num_repetitions})"
+                    current_run / total_runs,
+                    text=f"Running {algo_name} (Rep {i+1}/{reps})",
                 )
-                
-                measurement = execute_and_measure(algo_func, instance_data)
+
+                # Build solver_kwargs only with provided (non-None) values
+                solver_kwargs = {}
+                if ui_time_limit_seconds is not None:
+                    solver_kwargs["time_limit_seconds"] = ui_time_limit_seconds
+                if ui_solution_limit is not None:
+                    solver_kwargs["solution_limit"] = ui_solution_limit
+
+                measurement = execute_and_measure(algo_func, instance_data, **solver_kwargs)
                 cpu_times.append(measurement["cpu_time"])
                 objectives.append(measurement["objective_value"])
 
@@ -112,34 +146,34 @@ if st.button("🚀 Run Benchmark", type="primary"):
                 "Cost": statistics.mean(objectives),
                 "Local CPU Time (s)": statistics.mean(cpu_times),
             })
-        
+
         progress_bar.progress(1.0, text="Benchmark Complete!")
         st.header("Benchmark Results")
 
         # --- C. Metric Calculation & Reporting ---
         df = pd.DataFrame(results_list)
-        
+
         # Get baseline time for relative calculations
         try:
             baseline_time = df[df["Algorithm"] == "Baseline (C&W)"]["Local CPU Time (s)"].iloc[0]
         except (IndexError, KeyError):
             st.warning("Baseline (C&W) not run. Cannot calculate 'Time vs. Baseline'.")
-            baseline_time = 1.0 # Avoid division by zero
-            
+            baseline_time = 1.0  # Avoid division by zero
+
         # 1. Normalized Runtime (Eq 2)
         # t_norm = t_local * (s_local / s_base)
         df["Normalized Time (s)"] = df["Local CPU Time (s)"] * (s_local / s_base)
-        
+
         # 2. Time Relative to the Baseline
         df["Time vs. Baseline"] = df["Local CPU Time (s)"] / baseline_time
-        
+
         # Reorder columns for display
         df = df[[
-            "Algorithm", 
-            "Cost", 
-            "Local CPU Time (s)", 
-            "Normalized Time (s)", 
-            "Time vs. Baseline"
+            "Algorithm",
+            "Cost",
+            "Local CPU Time (s)",
+            "Normalized Time (s)",
+            "Time vs. Baseline",
         ]]
 
         st.dataframe(
@@ -149,9 +183,9 @@ if st.button("🚀 Run Benchmark", type="primary"):
                 "Normalized Time (s)": "{:.6f}",
                 "Time vs. Baseline": "{:.4f}",
             }),
-            use_container_width=True
+            use_container_width=True,
         )
-        
+
         st.info(f"""
         **How to Read This Table:**
         * **Cost:** The final solution (total distance). **Lower is better.**
@@ -166,5 +200,6 @@ if st.button("🚀 Run Benchmark", type="primary"):
                 "Local Score (s_local)": s_local,
                 "Instance": instance_name,
                 "Repetitions": num_repetitions,
-                "Normalization Ratio (s_local / s_base)": (s_local / s_base)
+                "Repetitions (used)": reps,
+                "Normalization Ratio (s_local / s_base)": (s_local / s_base),
             })

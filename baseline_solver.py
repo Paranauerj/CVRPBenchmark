@@ -32,7 +32,7 @@ def _create_routing_model(data):
         
     return manager, routing
 
-def solve_baseline(data):
+def solve_baseline(data, time_limit_seconds=None, solution_limit=None):
     """
     Solves the CVRP using the Clarke-Wright (SAVINGS) heuristic.
     Local search is disabled to keep it a pure, deterministic baseline.
@@ -51,7 +51,13 @@ def solve_baseline(data):
         routing_enums_pb2.LocalSearchMetaheuristic.UNSET)
     # ---
 
-    search_parameters.time_limit.seconds = 5 # Set a generous limit, though it should be fast
+    # Only set time/solution parameters if caller provided them. If not provided,
+    # leave the routing search parameters untouched so OR-Tools defaults apply.
+    if time_limit_seconds is not None:
+        search_parameters.time_limit.seconds = int(time_limit_seconds)
+
+    if solution_limit is not None:
+        search_parameters.solution_limit = int(solution_limit)
     
     solution = routing.SolveWithParameters(search_parameters)
     

@@ -3,7 +3,7 @@ from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 from baseline_solver import _create_routing_model # Reuse the setup function!
 
-def solve_gls(data):
+def solve_gls(data, time_limit_seconds=None, solution_limit=None):
     """Solves the CVRP using Guided Local Search (GLS)."""
     
     manager, routing = _create_routing_model(data)
@@ -18,9 +18,13 @@ def solve_gls(data):
     search_parameters.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)
     
-    # Set a time limit for the search
-    search_parameters.time_limit.seconds = 5
-    search_parameters.solution_limit = 1000
+    # Only set parameters if explicitly provided by the caller. This keeps
+    # OR-Tools' internal defaults when the values are omitted.
+    if time_limit_seconds is not None:
+        search_parameters.time_limit.seconds = int(time_limit_seconds)
+
+    if solution_limit is not None:
+        search_parameters.solution_limit = int(solution_limit)
     # ---
     
     solution = routing.SolveWithParameters(search_parameters)
