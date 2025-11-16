@@ -14,6 +14,13 @@ st.set_page_config(
     layout="wide"
 )
 
+# --- Session State Initialization ---
+# This is key to managing the "running" state and the stop button
+if 'run_benchmark' not in st.session_state:
+    st.session_state.run_benchmark = False
+if 'results_df' not in st.session_state:
+    st.session_state.results_df = None
+
 st.title("CVRP Solver Benchmarker 📊")
 st.write("""
 This app runs various CVRP solvers and compares their performance 
@@ -112,10 +119,26 @@ with st.sidebar:
                 "time": time_val,
                 "solution": solution_val
             }
+    
+    # --- NEW: Start/Stop Buttons ---
+    st.header("Controls")
+    col1, col2 = st.columns(2)
+    
+    if col1.button("🚀 Run Benchmark", type="primary", use_container_width=True):
+        if not algorithms_to_run_other:
+             st.toast("Warning: Running baseline only.", icon="⚠️")
+        st.session_state.run_benchmark = True
+        st.session_state.results_df = None # Clear old results
+        st.rerun()
+
+    if col2.button("⏹️ Stop Benchmark", use_container_width=True):
+        st.session_state.run_benchmark = False
+        # No rerun needed, the loop will just stop
+        st.toast("Stopping benchmark...")
 
 
-# --- Main Page ---
-if st.button("🚀 Run Benchmark", type="primary"):
+# --- Main Page (State-Driven Logic) ---
+if st.session_state.run_benchmark:
     
     # Load data
     instance_data = data_model.create_data_model()
@@ -139,6 +162,12 @@ if st.button("🚀 Run Benchmark", type="primary"):
 
     # 2. Main execution loop
     for algo_name in algorithms_to_run:
+        # --- STOP CHECK 1 ---
+        # Check for stop signal before starting next algorithm
+        if not st.session_state.run_benchmark:
+            status_bar.warning("Benchmark stopped by user.")
+            break
+            
         algo_func = ALGORITHM_MAP[algo_name]
         cpu_times, objectives = [], []
         status_bar.text(f"Testing Algorithm: {algo_name}...")
@@ -149,6 +178,12 @@ if st.button("🚀 Run Benchmark", type="primary"):
         solution_limit = per_algo_overrides.get(algo_name, {}).get("solution") or solution_general
         
         for i in range(reps):
+            # --- STOP CHECK 2 ---
+            # Check for stop signal before each repetition
+            if not st.session_state.run_benchmark:
+                status_bar.warning("Benchmark stopped by user.")
+                break
+                
             # Update progress
             current_run += 1
             progress_bar.progress(
@@ -167,60 +202,100 @@ if st.button("🚀 Run Benchmark", type="primary"):
             measurement = execute_and_measure(algo_func, instance_data, **solver_kwargs)
             cpu_times.append(measurement["cpu_time"])
             objectives.append(measurement["objective_value"])
-
-        # Store the averages
-        results_list.append({
-            "Algorithm": algo_name,
-            "Cost": statistics.mean(objectives),
-            "CPU Time (s)": statistics.mean(cpu_times), # <--- RENAMED
-            "Repetitions": reps, # Also store reps in result
-        })
+        
+        # --- STOP CHECK 3 ---
+        # If inner loop was broken, break outer loop too
+        if not st.session_state.run_benchmark:
+            break
+        
+        if cpu_times: # Only store if we actually ran
+            # Store the averages
+            results_list.append({
+                "Algorithm": algo_name,
+                "Cost": statistics.mean(objectives),
+                "CPU Time (s)": statistics.mean(cpu_times),
+                "Repetitions": reps, # Also store reps in result
+            })
     
-    progress_bar.progress(1.0, text="Benchmark Complete!")
-    st.header("Benchmark Results")
-
     # --- C. Metric Calculation & Reporting ---
-    df = pd.DataFrame(results_list)
+    if results_list: # Only process if we have any results
+        st.header("Benchmark Results")
+        df = pd.DataFrame(results_list)
+        
+        # --- Calculate Time vs. Baseline ---
+        try:
+            baseline_time = df[df["Algorithm"] == "Baseline (C&W)"]["CPU Time (s)"].iloc[0]
+            df["Time vs. Baseline"] = df["CPU Time (s)"] / baseline_time
+            
+            # Reorder columns for display
+            df = df[[
+                "Algorithm", 
+                "Cost", 
+                "CPU Time (s)", 
+                "Time vs. Baseline",
+                "Repetitions"
+            ]]
+            format_dict = {
+                "Cost": "{:,.2f}",
+                "CPU Time (s)": "{:.6f}",
+                "Time vs. Baseline": "{:.4f}",
+                "Repetitions": "{:d}"
+            }
+        except (IndexError, KeyError):
+            # This happens if Baseline wasn't run (e.g., user stopped it)
+            st.warning("Baseline (C&W) was not run. Cannot calculate 'Time vs. Baseline'.")
+            df = df[["Algorithm", "Cost", "CPU Time (s)", "Repetitions"]]
+            format_dict = {
+                "Cost": "{:,.2f}",
+                "CPU Time (s)": "{:.6f}",
+                "Repetitions": "{:d}"
+            }
+        
+        # Save results to session state so they persist
+        st.session_state.results_df = df
+        
+        st.dataframe(
+            df.style.format(format_dict),
+            use_container_width=True
+        )
+        
+        st.info(f"""
+        **How to Read This Table:**
+        * **Cost:** The final solution (total distance). **Lower is better.**
+        * **CPU Time (s):** The actual CPU time taken by the algorithm.
+        * **Time vs. Baseline:** How many times slower/faster the algorithm was compared to the simple Baseline (C&W).
+        """)
+
+        with st.expander("Show Configuration"):
+            st.subheader("General Settings Used")
+            st.json({
+                "Instance": instance_name,
+                "General Repetitions": reps_general,
+                "General Time Limit": time_general,
+                "General Solution Limit": solution_general
+            })
+            st.subheader("Per-Algorithm Overrides Applied")
+            st.json(per_algo_overrides)
     
-    # --- UPDATED: Using new column name ---
-    baseline_time = df[df["Algorithm"] == "Baseline (C&W)"]["CPU Time (s)"].iloc[0]
-    df["Time vs. Baseline"] = df["CPU Time (s)"] / baseline_time
+    # Automatically stop 'run' state when finished or stopped
+    if st.session_state.run_benchmark:
+        st.balloons() # Success!
+    st.session_state.run_benchmark = False
+
+# --- Show previous results if they exist and we are not running ---
+elif st.session_state.results_df is not None:
+    st.header("Last Benchmark Results")
     
-    # Reorder columns for display
-    df = df[[
-        "Algorithm", 
-        "Cost", 
-        "CPU Time (s)", # <--- RENAMED
-        "Time vs. Baseline",
-        "Repetitions"
-    ]]
+    # Re-format the saved DataFrame for display
+    format_dict = {
+        "Cost": "{:,.2f}",
+        "CPU Time (s)": "{:.6f}",
+        "Repetitions": "{:d}"
+    }
+    if "Time vs. Baseline" in st.session_state.results_df.columns:
+         format_dict["Time vs. Baseline"] = "{:.4f}"
 
     st.dataframe(
-        df.style.format({
-            "Cost": "{:,.2f}",
-            "CPU Time (s)": "{:.6f}", # <--- RENAMED
-            "Time vs. Baseline": "{:.4f}",
-            "Repetitions": "{:d}"
-        }),
+        st.session_state.results_df.style.format(format_dict),
         use_container_width=True
     )
-    
-    st.info(f"""
-    **How to Read This Table:**
-    * **Cost:** The final solution (total distance). **Lower is better.**
-    * **CPU Time (s):** The actual CPU time taken by the algorithm. # <--- RENAMED
-    * **Time vs. Baseline:** How many times slower/faster the algorithm was compared to the simple Baseline (C&W).
-    """)
-
-    with st.expander("Show Configuration"):
-        # Show the final "general" settings
-        st.subheader("General Settings Used")
-        st.json({
-            "Instance": instance_name,
-            "General Repetitions": reps_general,
-            "General Time Limit": time_general,
-            "General Solution Limit": solution_general
-        })
-        # Show the overrides that were applied
-        st.subheader("Per-Algorithm Overrides Applied")
-        st.json(per_algo_overrides)
