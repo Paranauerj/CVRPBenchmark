@@ -125,7 +125,7 @@ with st.sidebar:
     set_lns_time_limit_general = st.checkbox("Set LNS time limit (seconds)", value=False)
     lns_time_general = st.number_input(
         "LNS time limit (seconds)", min_value=1, value=100, step=1,
-        help="Time limit for the LNS sub-solver. Default in OR-Tools is 100ms, but we default to 100s if set."
+        help="Time limit for the LNS sub-solver. Default in OR-Tools is 100s."
     ) if set_lns_time_limit_general else None
     
     st.subheader("4. Per-Algorithm Overrides")
