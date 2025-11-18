@@ -121,6 +121,13 @@ with st.sidebar:
         "Solution limit", min_value=1, value=1000, step=1
     ) if set_solution_limit_general else None
     
+    # --- NEW: LNS Time Limit (General) ---
+    set_lns_time_limit_general = st.checkbox("Set LNS time limit (seconds)", value=False)
+    lns_time_general = st.number_input(
+        "LNS time limit (seconds)", min_value=1, value=100, step=1,
+        help="Time limit for the LNS sub-solver. Default in OR-Tools is 100ms, but we default to 100s if set."
+    ) if set_lns_time_limit_general else None
+    
     st.subheader("4. Per-Algorithm Overrides")
     st.write("Set specific parameters for individual algorithms.")
     
@@ -140,10 +147,15 @@ with st.sidebar:
             override_solution = st.checkbox(f"Override Solution Limit##{algo_name}", value=False)
             solution_val = st.number_input(f"Solution limit##{algo_name}", min_value=1, value=solution_general or 1000, step=1) if override_solution else None
             
+            # --- NEW: LNS Time Limit (Override) ---
+            override_lns_time = st.checkbox(f"Override LNS Time Limit##{algo_name}", value=False)
+            lns_time_val = st.number_input(f"LNS time limit (s)##{algo_name}", min_value=1, value=lns_time_general or 100, step=1) if override_lns_time else None
+            
             per_algo_overrides[algo_name] = {
                 "reps": rep_val,
                 "time": time_val,
-                "solution": solution_val
+                "solution": solution_val,
+                "lns_time": lns_time_val # <-- NEW
             }
 
 
@@ -237,6 +249,7 @@ if st.session_state.run_benchmark:
                 
             algo_func = ALGORITHM_MAP[algo_name]
             cpu_times, objectives = [], []
+            memory_usages = []
             status_bar.text(f"Testing Algorithm: {algo_name}...")
             
             # --- UPDATED: Corrected logic for baseline ---
@@ -247,12 +260,17 @@ if st.session_state.run_benchmark:
                 reps = reps_to_run[algo_name]
                 time_limit = per_algo_overrides.get(algo_name, {}).get("time") or time_general
                 solution_limit = per_algo_overrides.get(algo_name, {}).get("solution") or solution_general
+                # --- NEW: Get LNS time limit ---
+                lns_time_limit = per_algo_overrides.get(algo_name, {}).get("lns_time") or lns_time_general
             
                 solver_kwargs = {}
                 if time_limit is not None:
                     solver_kwargs["time_limit_seconds"] = time_limit
                 if solution_limit is not None:
                     solver_kwargs["solution_limit"] = solution_limit
+                # --- NEW: Add LNS time to kwargs if set ---
+                if lns_time_limit is not None:
+                    solver_kwargs["lns_time_limit_seconds"] = lns_time_limit
             # ---
             
             for i in range(reps):
@@ -274,6 +292,9 @@ if st.session_state.run_benchmark:
                 if measurement["cpu_time"] is not None:
                      cpu_times.append(measurement["cpu_time"])
                 
+                if measurement["memory_usage"] is not None:
+                     memory_usages.append(measurement["memory_usage"])
+                
             if not st.session_state.run_benchmark:
                 break
             
@@ -283,8 +304,11 @@ if st.session_state.run_benchmark:
                 
                 results_list.append({
                     "Algorithm": algo_name,
+                    # --- NEW: Add Best Cost (min) ---
+                    "Best Cost": min(valid_objectives) if valid_objectives else None,
                     "Avg Cost": statistics.mean(valid_objectives) if valid_objectives else None,
                     "CPU Time (s)": statistics.mean(cpu_times) if cpu_times else None,
+                    "Avg Memory (KB)": statistics.mean(memory_usages) / 1024 if memory_usages else None,
                     "Repetitions": reps, 
                 })
         
@@ -293,38 +317,51 @@ if st.session_state.run_benchmark:
             st.header("Benchmark Results")
             df = pd.DataFrame(results_list)
             
-            # --- UPDATED: Calculate gap for Avg cost only ---
+            # --- UPDATED: Calculate gap for Avg and Best cost ---
             if "Avg Cost" in df.columns and bks_cost is not None:
-                # Handle cases where Avg Cost might be None (if all runs failed)
                 df["Avg Cost Gap (%)"] = df["Avg Cost"].apply(
-                    lambda cost: ((cost - bks_cost) / bks_cost) * 100.0 if cost is not None else None
+                    lambda cost: ((cost - bks_cost) / bks_cost) * 100.0 if not pd.isna(cost) else None
                 )
             else:
                 df["Avg Cost Gap (%)"] = None
+
+            # --- NEW: Calculate gap for Best Cost ---
+            if "Best Cost" in df.columns and bks_cost is not None:
+                df["Best Cost Gap (%)"] = df["Best Cost"].apply(
+                    lambda cost: ((cost - bks_cost) / bks_cost) * 100.0 if not pd.isna(cost) else None
+                )
+            else:
+                df["Best Cost Gap (%)"] = None
             
             try:
                 baseline_time = df[df["Algorithm"] == "Baseline (C&W)"]["CPU Time (s)"].iloc[0]
                 df["Time vs. Baseline"] = df["CPU Time (s)"] / baseline_time
                 
-                # --- UPDATED: New column order ---
+                # --- UPDATED: New column order with Memory ---
                 df = df[[
-                    "Algorithm", "Avg Cost", "Avg Cost Gap (%)", 
-                    "CPU Time (s)", "Time vs. Baseline", "Repetitions"
+                    "Algorithm", "Best Cost", "Best Cost Gap (%)", "Avg Cost", "Avg Cost Gap (%)", 
+                    "CPU Time (s)", "Time vs. Baseline", "Avg Memory (KB)", "Repetitions"
                 ]]
                 format_dict = {
+                    "Best Cost": "{:,.2f}",
+                    "Best Cost Gap (%)": "{:.4f}%",
                     "Avg Cost": "{:,.2f}",
                     "Avg Cost Gap (%)": "{:.4f}%",
                     "CPU Time (s)": "{:.6f}",
                     "Time vs. Baseline": "{:.4f}",
+                    "Avg Memory (KB)": "{:,.2f}",
                     "Repetitions": "{:d}"
                 }
             except (IndexError, KeyError, TypeError):
                 st.warning("Baseline (C&W) was not run or failed. Cannot calculate 'Time vs. Baseline'.")
-                df = df[["Algorithm", "Avg Cost", "Avg Cost Gap (%)", "CPU Time (s)", "Repetitions"]]
+                df = df[["Algorithm", "Best Cost", "Best Cost Gap (%)", "Avg Cost", "Avg Cost Gap (%)", "CPU Time (s)", "Avg Memory (KB)", "Repetitions"]]
                 format_dict = {
+                    "Best Cost": "{:,.2f}",
+                    "Best Cost Gap (%)": "{:.4f}%",
                     "Avg Cost": "{:,.2f}",
                     "Avg Cost Gap (%)": "{:.4f}%",
                     "CPU Time (s)": "{:.6f}",
+                    "Avg Memory (KB)": "{:,.2f}",
                     "Repetitions": "{:d}"
                 }
             
@@ -337,8 +374,10 @@ if st.session_state.run_benchmark:
             
             st.info(f"""
             **How to Read This Table:**
+            * **Best Cost:** The *best* solution (lowest cost) found across all repetitions.
+            * **Best Cost Gap (%):** Gap between your Best Cost and the BKS ({bks_cost}).
             * **Avg Cost:** The average solution cost across all repetitions.
-            * **Avg Cost Gap (%):** Percent difference from the BKS ({bks_cost}).
+            * **Avg Cost Gap (%):** Gap between your Avg Cost and the BKS ({bks_cost}).
             * **CPU Time (s):** The average CPU time per run.
             * **Time vs. Baseline:** How many times slower/faster the algorithm was compared to the Baseline.
             """)
@@ -352,7 +391,8 @@ if st.session_state.run_benchmark:
                     "BKS Cost": bks_cost,
                     "General Repetitions": reps_general,
                     "General Time Limit": time_general,
-                    "General Solution Limit": solution_general
+                    "General Solution Limit": solution_general,
+                    "General LNS Time Limit": lns_time_general # <-- NEW
                 })
                 st.subheader("Per-Algorithm Overrides Applied")
                 st.json(per_algo_overrides)
@@ -369,12 +409,19 @@ elif st.session_state.results_df is not None:
         "CPU Time (s)": "{:.6f}",
         "Repetitions": "{:d}"
     }
+    # --- NEW: Add Best Cost to format dict ---
+    if "Best Cost" in st.session_state.results_df.columns:
+         format_dict["Best Cost"] = "{:,.2f}"
+    if "Best Cost Gap (%)" in st.session_state.results_df.columns:
+         format_dict["Best Cost Gap (%)"] = "{:.4f}%"
     if "Avg Cost Gap (%)" in st.session_state.results_df.columns:
          format_dict["Avg Cost Gap (%)"] = "{:.4f}%"
     if "Avg Cost" in st.session_state.results_df.columns:
          format_dict["Avg Cost"] = "{:,.2f}"
     if "Time vs. Baseline" in st.session_state.results_df.columns:
          format_dict["Time vs. Baseline"] = "{:.4f}"
+    if "Avg Memory (KB)" in st.session_state.results_df.columns:
+         format_dict["Avg Memory (KB)"] = "{:,.2f}"
 
     st.dataframe(
         st.session_state.results_df.style.format(format_dict, na_rep="N/A"),
