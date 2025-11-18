@@ -3,6 +3,9 @@ import time
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
 
+# TODO: allow users to define the first search strategy and the metaheuristic type. Remove solvers files and create googleORTools file
+# which receives the first strategy and the metaheuristic type and executes them
+
 def _create_routing_model(data):
     """Creates the common routing model and manager."""
     manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']),
