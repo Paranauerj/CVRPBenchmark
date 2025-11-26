@@ -39,6 +39,8 @@ METAHEURISTICS = {
     "Tabu Search": routing_enums_pb2.LocalSearchMetaheuristic.TABU_SEARCH,
     "Simulated Annealing": routing_enums_pb2.LocalSearchMetaheuristic.SIMULATED_ANNEALING,
     "Greedy Descent": routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT,
+    "Generic Tabu Search": routing_enums_pb2.LocalSearchMetaheuristic.GENERIC_TABU_SEARCH,
+    "Automatic": routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC,
 }
 
 @st.cache_data
