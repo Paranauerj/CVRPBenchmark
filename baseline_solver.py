@@ -1,19 +1,13 @@
-import random
-import time
 from ortools.constraint_solver import routing_enums_pb2
 from ortools.constraint_solver import pywrapcp
-
-# TODO: allow users to define the first search strategy and the metaheuristic type. Remove solvers files and create googleORTools file
-# which receives the first strategy and the metaheuristic type and executes them
+import random
 
 def _create_routing_model(data):
-    """Creates the common routing model and manager."""
+    # ... (standard implementation) ...
     manager = pywrapcp.RoutingIndexManager(len(data['distance_matrix']),
                                            data['num_vehicles'], data['depot'])
     routing = pywrapcp.RoutingModel(manager)
-    routing.solver().ReSeed(random.randint(1, 2**31 - 1))
 
-    # Distance Callback
     def distance_callback(from_index, to_index):
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
@@ -22,56 +16,27 @@ def _create_routing_model(data):
     transit_callback_index = routing.RegisterTransitCallback(distance_callback)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
     
-    # Demand Callback
     def demand_callback(from_index):
         from_node = manager.IndexToNode(from_index)
         return data['demands'][from_node]
 
     demand_callback_index = routing.RegisterUnaryTransitCallback(demand_callback)
     routing.AddDimensionWithVehicleCapacity(
-        demand_callback_index,
-        0,  # null capacity slack
-        data['vehicle_capacities'],  # vehicle capacity
-        True,  # start cumul to zero
-        'Capacity')
+        demand_callback_index, 0, data['vehicle_capacities'], True, 'Capacity')
         
     return manager, routing
 
 def solve_baseline(data, **kwargs):
-    """
-    Solves the CVRP using the Clarke-Wright (SAVINGS) heuristic.
-    
-    **kwargs is included to absorb any parameters from the benchmarker,
-    but they are NOT used, ensuring a consistent baseline.
-    
-    This solver is hard-coded to return the *first solution*
-    (the pure heuristic) with no local search and no time limit.
-    """
     manager, routing = _create_routing_model(data)
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    
-    # --- Baseline Configuration ---
-    
-    # 1. Use SAVINGS (Clarke & Wright) as the construction heuristic
-    search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.SAVINGS)
-        
-    # 2. Disable all local search to get the pure heuristic result
-    search_parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.UNSET)
-        
-    # 3. Force the solver to stop after *one* solution is found
+    search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.SAVINGS
+    search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.UNSET
     search_parameters.solution_limit = 1
     
-    # NOTE: We explicitly DO NOT set a time limit.
-    
-    # ---
-    
     solution = routing.SolveWithParameters(search_parameters)
-
+    
     if solution:
-        solver = routing.solver()
-        memory_usage = solver.MemoryUsage()
-        return solution.ObjectiveValue(), memory_usage
+        # Return tuple to match configurable solver
+        return solution.ObjectiveValue(), routing.solver().MemoryUsage()
     else:
         return None, None
