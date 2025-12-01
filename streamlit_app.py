@@ -9,16 +9,13 @@ import statistics
 import glob
 import os
 import math
-import random # --- NEW IMPORT ---
+import random
 from ortools.constraint_solver import routing_enums_pb2
 
 # --- Page Configuration ---
-st.set_page_config(
-    page_title="CVRP Benchmarker",
-    layout="wide"
-)
+st.set_page_config(page_title="CVRP Benchmarker", layout="wide")
 
-# --- Session State Initialization ---
+# --- Session State ---
 if 'run_benchmark' not in st.session_state:
     st.session_state.run_benchmark = False
 if 'results_df' not in st.session_state:
@@ -39,8 +36,6 @@ METAHEURISTICS = {
     "Tabu Search": routing_enums_pb2.LocalSearchMetaheuristic.TABU_SEARCH,
     "Simulated Annealing": routing_enums_pb2.LocalSearchMetaheuristic.SIMULATED_ANNEALING,
     "Greedy Descent": routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT,
-    "Generic Tabu Search": routing_enums_pb2.LocalSearchMetaheuristic.GENERIC_TABU_SEARCH,
-    "Automatic": routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC,
 }
 
 @st.cache_data
@@ -87,6 +82,14 @@ with st.sidebar:
     
     use_no_improv = st.checkbox("Stop at No Improvement (s)", value=False)
     no_improv_limit = st.number_input("No Improv Seconds", 1, 300, 5) if use_no_improv else None
+    
+    # --- NEW: No Improvement (Iterations) Input ---
+    use_no_improv_iter = st.checkbox("Stop at No Improvement (iterations)", value=False,
+        help="Stops if no better solution is found after N accepted neighbors (iterations).")
+    no_improv_iter_limit = st.number_input(
+        "No Improv Iterations Limit", min_value=100, value=1000, step=100
+    ) if use_no_improv_iter else None
+    # ---------------------------------------------
 
 # --- Main Content ---
 if selected_instance_name:
@@ -97,12 +100,12 @@ else:
 col1, col2 = st.columns(2)
 can_run = (selected_instance_name is not None) and (selected_first_sols and selected_metaheuristics)
 
-if col1.button("🚀 Run Benchmark", type="primary", disabled=not can_run, use_container_width=True):
+if col1.button("🚀 Run Benchmark", type="primary", disabled=not can_run, width='stretch'):
     st.session_state.run_benchmark = True
     st.session_state.results_df = None
     st.rerun()
 
-if col2.button("⏹️ Stop", use_container_width=True):
+if col2.button("⏹️ Stop", width='stretch'):
     st.session_state.run_benchmark = False
     st.toast("Stopping...")
 
@@ -132,7 +135,8 @@ if st.session_state.run_benchmark:
                 "solution_limit": sol_limit,
                 "lns_time_limit_seconds": lns_limit,
                 "target_cost": target_cost_val,
-                "no_improvement_limit": no_improv_limit
+                "no_improvement_limit": no_improv_limit,
+                "no_improvement_iterations_limit": no_improv_iter_limit # --- NEW ARGUMENT ---
             }
             experiments.append({"name": algo_name, "func": configurable_solver.solve_cvrp, "kwargs": kwargs, "reps": reps})
 
@@ -140,7 +144,13 @@ if st.session_state.run_benchmark:
     for exp in experiments:
         if exp["name"] == "Baseline (C&W)": continue
         k = exp["kwargs"]
-        if all(v is None for v in [k.get("time_limit_seconds"), k.get("solution_limit"), k.get("target_cost"), k.get("no_improvement_limit")]):
+        if all(v is None for v in [
+            k.get("time_limit_seconds"), 
+            k.get("solution_limit"), 
+            k.get("target_cost"), 
+            k.get("no_improvement_limit"),
+            k.get("no_improvement_iterations_limit") # --- CHECK THIS ---
+        ]):
             st.error(f"Error: Algorithm '{exp['name']}' has NO stopping limits set.")
             st.stop()
 
@@ -161,7 +171,6 @@ if st.session_state.run_benchmark:
             run_count += 1
             progress_bar.progress(run_count / total_runs)
             
-            # --- Generate a random seed for this repetition ---
             current_kwargs = exp["kwargs"].copy()
             if exp["name"] != "Baseline (C&W)":
                 current_kwargs["random_seed"] = random.randint(0, 2**31 - 1)

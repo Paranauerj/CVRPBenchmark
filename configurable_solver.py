@@ -8,13 +8,17 @@ class SmartLimitCallback:
     A helper class to track the best solution found so far.
     Used by the CustomLimit callback to decide when to stop.
     """
-    def __init__(self, routing, no_improvement_limit=None, target_cost=None):
+    def __init__(self, routing, no_improvement_limit=None, target_cost=None, no_improvement_iterations_limit=None):
         self.routing = routing
-        self.no_improvement_limit = no_improvement_limit
+        self.solver = routing.solver() # Access the underlying CP solver
+        
+        self.no_improvement_limit = no_improvement_limit # Time based
         self.target_cost = target_cost
+        self.no_improvement_iterations_limit = no_improvement_iterations_limit # Iteration based
         
         self.best_objective = float('inf')
         self.last_improvement_time = time.time()
+        self.last_improvement_neighbors = 0 # Tracks accepted neighbors (iterations)
         self.start_time = time.time()
 
     def on_solution_callback(self):
@@ -28,9 +32,12 @@ class SmartLimitCallback:
         except:
             return 
 
+        # Check if this solution is an improvement
         if current_cost < self.best_objective:
             self.best_objective = current_cost
             self.last_improvement_time = time.time()
+            # Reset the iteration counter baseline to the current count
+            self.last_improvement_neighbors = self.solver.AcceptedNeighbors()
             
     def check_limit_callback(self):
         """
@@ -42,12 +49,19 @@ class SmartLimitCallback:
             if self.best_objective <= self.target_cost:
                 return True
 
-        # 2. Check No Improvement
+        # 2. Check No Improvement (Time)
         if self.no_improvement_limit is not None:
             if self.best_objective != float('inf'):
-                # Check if time since last improvement exceeds limit
                 if time.time() - self.last_improvement_time > self.no_improvement_limit:
                     return True
+        
+        # 3. Check No Improvement (Iterations / Accepted Neighbors)
+        if self.no_improvement_iterations_limit is not None:
+             if self.best_objective != float('inf'):
+                 current_neighbors = self.solver.AcceptedNeighbors()             
+                 # Stop if we've accepted N neighbors since the last improvement
+                 if current_neighbors - self.last_improvement_neighbors > self.no_improvement_iterations_limit:
+                     return True
                     
         return False
 
@@ -59,6 +73,7 @@ def solve_cvrp(data,
                lns_time_limit_seconds=None, 
                target_cost=None, 
                no_improvement_limit=None,
+               no_improvement_iterations_limit=None, # --- NEW ARGUMENT ---
                random_seed=None):
     """
     A generic solver function that can run ANY combination of strategies.
@@ -67,8 +82,6 @@ def solve_cvrp(data,
     
     # --- APPLY RANDOM SEED ---
     if random_seed is not None:
-        # Note: Using routing.solver() just for ReSeed seems to be generally accepted
-        # but if it fails similarly, we might skip it. Usually this works though.
         routing.solver().ReSeed(random_seed)
     
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
@@ -85,19 +98,23 @@ def solve_cvrp(data,
     if lns_time_limit_seconds is not None:
         search_parameters.lns_time_limit.seconds = int(lns_time_limit_seconds)
 
-    # --- CRITICAL FIX: Close model to initialize variables ---
+    # --- CRITICAL FIX: Close model to initialize variables like CostVar ---
     routing.CloseModelWithParameters(search_parameters)
 
     # --- 3. Custom Monitor Setup (Smart Limits) ---
-    if target_cost is not None or no_improvement_limit is not None:
+    if target_cost is not None or no_improvement_limit is not None or no_improvement_iterations_limit is not None:
         # Create our helper object
-        limit_handler = SmartLimitCallback(routing, no_improvement_limit, target_cost)
+        limit_handler = SmartLimitCallback(
+            routing, 
+            no_improvement_limit, 
+            target_cost,
+            no_improvement_iterations_limit
+        )
         
         # 1. Register the "At Solution" callback to update stats
         routing.AddAtSolutionCallback(limit_handler.on_solution_callback)
         
         # 2. Register the "Custom Limit" to stop the search
-        # FIX: Use routing.AddSearchMonitor instead of solver.AddSearchMonitor
         solver = routing.solver()
         custom_limit = solver.CustomLimit(limit_handler.check_limit_callback)
         routing.AddSearchMonitor(custom_limit)
