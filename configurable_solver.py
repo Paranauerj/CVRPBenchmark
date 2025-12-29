@@ -33,21 +33,36 @@ class SmartLimitCallback:
         self.no_improvement_limit = no_improvement_limit
         self.target_cost = target_cost
         self.no_improvement_iterations_limit = no_improvement_iterations_limit
+        
         self.best_objective = float('inf')
         self.last_improvement_time = time.time()
         self.last_improvement_neighbors = 0
+        self.start_time = time.time()
+        
+        # --- NEW: History Tracking ---
+        # List of tuples: (time_elapsed, iterations, cost)
+        self.history = []
 
     def on_solution_callback(self):
         try:
-            # FIX: Access cost variable directly. Safe in AtSolution.
             current_cost = self.routing.CostVar().Value()
         except:
             return 
         
+        # Record every solution found? Or just improvements?
+        # Usually recording every solution gives a better "convergence" curve,
+        # but recording only improvements is cleaner for "best so far".
+        # Let's record improvements to show the "step" function.
+        
+        current_time = time.time() - self.start_time
+        current_iters = self.solver.AcceptedNeighbors()
+
         if current_cost < self.best_objective:
             self.best_objective = current_cost
             self.last_improvement_time = time.time()
-            self.last_improvement_neighbors = self.solver.AcceptedNeighbors()
+            self.last_improvement_neighbors = current_iters
+            # Record Improvement
+            self.history.append((current_time, current_iters, current_cost))
             
     def check_limit_callback(self):
         if self.target_cost is not None and self.best_objective <= self.target_cost:
@@ -88,12 +103,14 @@ def solve_cvrp(data,
     if solution_limit is not None: search_parameters.solution_limit = int(solution_limit)
     if lns_time_limit_seconds is not None: search_parameters.lns_time_limit.seconds = int(lns_time_limit_seconds)
 
-    # CRITICAL: Close model to initialize CostVar for callbacks
     routing.CloseModelWithParameters(search_parameters)
 
+    # Always create the callback to track history, even if no custom limits are set
+    limit_handler = SmartLimitCallback(routing, no_improvement_limit, target_cost, no_improvement_iterations_limit)
+    routing.AddAtSolutionCallback(limit_handler.on_solution_callback)
+    
+    # Only add custom limit if needed
     if target_cost is not None or no_improvement_limit is not None or no_improvement_iterations_limit is not None:
-        limit_handler = SmartLimitCallback(routing, no_improvement_limit, target_cost, no_improvement_iterations_limit)
-        routing.AddAtSolutionCallback(limit_handler.on_solution_callback)
         solver = routing.solver()
         custom_limit = solver.CustomLimit(limit_handler.check_limit_callback)
         routing.AddSearchMonitor(custom_limit)
@@ -101,7 +118,7 @@ def solve_cvrp(data,
     solution = routing.SolveWithParameters(search_parameters)
     
     if solution:
-        # Extract Routes (List of Lists of Node Indices)
+        # Extract Routes
         routes = []
         for vehicle_id in range(data['num_vehicles']):
             index = routing.Start(vehicle_id)
@@ -109,12 +126,12 @@ def solve_cvrp(data,
             while not routing.IsEnd(index):
                 node_index = manager.IndexToNode(index)
                 if node_index != data['depot']:
-                    route.append(node_index) # 0-based index
+                    route.append(node_index) 
                 index = solution.Value(routing.NextVar(index))
             if route:
                 routes.append(route)
                 
-        # Return tuple: (Cost, Iterations, Routes)
-        return solution.ObjectiveValue(), routing.solver().AcceptedNeighbors(), routes
+        # Return tuple: (Cost, Iterations, Routes, History)
+        return solution.ObjectiveValue(), routing.solver().AcceptedNeighbors(), routes, limit_handler.history
     else:
-        return None, None, None
+        return None, None, None, None
