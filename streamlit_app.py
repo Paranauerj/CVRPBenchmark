@@ -98,19 +98,22 @@ def plot_convergence(histories_dict, metric_type="time", max_val=None):
     return fig
 
 # --- Constants & Sidebar (Restored Full List) ---
+# Some first solutions need to pass a callback (like Sweep) - only available in C++
+# https://github.com/google/or-tools/issues/2004#issuecomment-623913505
+# https://github.com/google/or-tools/issues/3593#issuecomment-1347828378
 FIRST_SOLUTIONS = {
     "Automatic": routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC,
     "Path Cheapest Arc": routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC,
     "Path Most Constrained Arc": routing_enums_pb2.FirstSolutionStrategy.PATH_MOST_CONSTRAINED_ARC,
-    "Evaluator Strategy": routing_enums_pb2.FirstSolutionStrategy.EVALUATOR_STRATEGY,
+    #"Evaluator Strategy": routing_enums_pb2.FirstSolutionStrategy.EVALUATOR_STRATEGY, # C++ only
     "Savings (Clarke-Wright)": routing_enums_pb2.FirstSolutionStrategy.SAVINGS,
-    "Sweep": routing_enums_pb2.FirstSolutionStrategy.SWEEP,
+    #"Sweep": routing_enums_pb2.FirstSolutionStrategy.SWEEP, # C++ only
     "Christofides": routing_enums_pb2.FirstSolutionStrategy.CHRISTOFIDES,
-    "All Unperformed": routing_enums_pb2.FirstSolutionStrategy.ALL_UNPERFORMED,
-    "Best Insertion": routing_enums_pb2.FirstSolutionStrategy.BEST_INSERTION,
+    #"All Unperformed": routing_enums_pb2.FirstSolutionStrategy.ALL_UNPERFORMED, # C++ only
+    #"Best Insertion": routing_enums_pb2.FirstSolutionStrategy.BEST_INSERTION, # C++ only
     "Parallel Cheapest Insertion": routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION,
     "Local Cheapest Insertion": routing_enums_pb2.FirstSolutionStrategy.LOCAL_CHEAPEST_INSERTION,
-    "Global Cheapest Arc": routing_enums_pb2.FirstSolutionStrategy.GLOBAL_CHEAPEST_ARC,
+    #"Global Cheapest Arc": routing_enums_pb2.FirstSolutionStrategy.GLOBAL_CHEAPEST_ARC, # C++ only
     "Local Cheapest Arc": routing_enums_pb2.FirstSolutionStrategy.LOCAL_CHEAPEST_ARC,
     "First Unbound Min Value": routing_enums_pb2.FirstSolutionStrategy.FIRST_UNBOUND_MIN_VALUE,
 }
