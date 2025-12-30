@@ -101,6 +101,7 @@ def plot_convergence(histories_dict, metric_type="time", max_val=None):
 # Some first solutions need to pass a callback (like Sweep) - only available in C++
 # https://github.com/google/or-tools/issues/2004#issuecomment-623913505
 # https://github.com/google/or-tools/issues/3593#issuecomment-1347828378
+# https://stackoverflow.com/questions/50137182/ortools-how-to-use-search-strategies-sweep-and-best-insertion
 FIRST_SOLUTIONS = {
     "Automatic": routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC,
     "Path Cheapest Arc": routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC,
