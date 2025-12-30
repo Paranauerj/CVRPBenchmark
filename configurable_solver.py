@@ -117,7 +117,7 @@ def solve_cvrp(data,
 
     solution = routing.SolveWithParameters(search_parameters)
     
-    if solution:
+    if solution is not None:
         # Extract Routes
         routes = []
         for vehicle_id in range(data['num_vehicles']):

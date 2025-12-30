@@ -57,6 +57,8 @@ def plot_convergence(histories_dict, metric_type="time", max_val=None):
     """
     fig, ax = plt.subplots(figsize=(10, 6))
     
+    has_data = False
+    
     for algo_name, runs in histories_dict.items():
         # Pick the "best" run (lowest final cost) to plot, or average them?
         # Plotting the best run is usually cleaner for convergence analysis.
@@ -69,6 +71,7 @@ def plot_convergence(histories_dict, metric_type="time", max_val=None):
                 best_run_idx = idx
                 
         if best_run_idx != -1:
+            has_data = True
             history = runs[best_run_idx]
             
             # Prepare data
@@ -89,6 +92,10 @@ def plot_convergence(histories_dict, metric_type="time", max_val=None):
                 y_data.append(y_data[-1]) # Repeat last cost
                 
             ax.step(x_data, y_data, where='post', label=algo_name, linewidth=2)
+    
+    if not has_data:
+        ax.text(0.5, 0.5, "No convergence data available\n(No solutions found)", 
+                ha='center', va='center', fontsize=12, transform=ax.transAxes)
             
     ax.set_xlabel("Time (s)" if metric_type == "time" else "Iterations")
     ax.set_ylabel("Cost")
@@ -234,6 +241,18 @@ if st.session_state.run_benchmark:
                 row["Best Gap (%)"] = ((best - bks_cost)/bks_cost)*100.0
                 row["Avg Gap (%)"] = ((avg - bks_cost)/bks_cost)*100.0
             results_list.append(row)
+        else:
+            # No solution found for any run
+            row = {
+                "Algorithm": exp["name"], "Best Cost": "No Solution", "Avg Cost": "No Solution",
+                "CPU Time (s)": statistics.mean(times) if times else None,
+                "Iterations": None,
+                "Repetitions": exp["reps"], "_routes": None
+            }
+            if bks_cost:
+                row["Best Gap (%)"] = "N/A"
+                row["Avg Gap (%)"] = "N/A"
+            results_list.append(row)
 
     st.session_state.results_df = pd.DataFrame(results_list)
     st.balloons()
@@ -245,10 +264,29 @@ if st.session_state.results_df is not None:
     
     # 1. Table
     cols = ["Algorithm", "Best Cost", "Best Gap (%)", "Avg Cost", "Avg Gap (%)", "CPU Time (s)", "Iterations", "Repetitions"]
-    st.dataframe(df[cols].style.format({
-        "Best Cost": "{:,.2f}", "Avg Cost": "{:,.2f}", "Best Gap (%)": "{:.4f}%", "Avg Gap (%)": "{:.4f}%",
-        "CPU Time (s)": "{:.6f}", "Iterations": "{:d}"
-    }, na_rep="N/A"), width='stretch')
+    
+    # Create a copy for formatting to handle mixed types (strings and numbers)
+    df_display = df[cols].copy()
+    
+    # Format only numeric columns
+    def format_row(row):
+        for col in row.index:
+            if col in ["Best Cost", "Avg Cost"]:
+                if isinstance(row[col], (int, float)) and not math.isnan(row[col]):
+                    row[col] = f"{row[col]:,.2f}"
+            elif col in ["Best Gap (%)", "Avg Gap (%)"]:
+                if isinstance(row[col], (int, float)) and not math.isnan(row[col]):
+                    row[col] = f"{row[col]:.4f}%"
+            elif col == "CPU Time (s)":
+                if isinstance(row[col], (int, float)) and not math.isnan(row[col]):
+                    row[col] = f"{row[col]:.6f}"
+            elif col == "Iterations":
+                if isinstance(row[col], (int, float)) and not math.isnan(row[col]):
+                    row[col] = f"{int(row[col])}"
+        return row
+    
+    df_display = df_display.apply(format_row, axis=1)
+    st.dataframe(df_display, width='stretch')
 
     # 2. Convergence Plots
     st.subheader("Convergence Analysis")
@@ -277,11 +315,12 @@ if st.session_state.results_df is not None:
     for i, row in df.iterrows():
         with cols[i % 2]:
             # Updated Title to include Cost
-            st.markdown(f"**{row['Algorithm']}** (Cost: {row['Best Cost']:.2f})")
+            cost_str = f"(Cost: {row['Best Cost']:.2f})" if isinstance(row['Best Cost'], (int, float)) else "(No Solution)"
+            st.markdown(f"**{row['Algorithm']}** {cost_str}")
             if row.get("_routes"):
                 paths = p_map.get(sel_inst)
                 with open(paths["vrp"], 'r') as f: inst_data = instance_data_parser.load_vrp_instance(f)
                 fig = plot_routes(inst_data, row["_routes"], title="")
                 st.pyplot(fig)
             else:
-                st.warning("No routes.")
+                st.warning("No solution found for this algorithm.")
