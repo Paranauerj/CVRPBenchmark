@@ -205,10 +205,10 @@ with st.sidebar:
             st.warning("⚠️ Best Known Solution not available. Gap comparison disabled.")
     
     no_improv = st.number_input("No Improv (s)", 1, 300, 5) if st.checkbox("Stop No Improv (s)", False) else None
-    no_improv_iter = st.number_input("No Improv Iterations", 100, 10000, 100) if st.checkbox("Stop No Improv (Iter)", False) else None
+    no_improv_iter = st.number_input("No Improv Accepted Neighbors", 20, 10000, 100) if st.checkbox("Stop No Improv (Accepted Neighbors)", False) else None
 
 st.title("CVRP Benchmarker 📊")
-if st.button("🚀 Run", type="primary", disabled=not (sel_inst and sel_fs and sel_mh), width='stretch'):
+if st.button("🚀 Run", type="primary", disabled=not (sel_inst and sel_fs and sel_mh) or st.session_state.run_benchmark, width='stretch'):
     st.session_state.run_benchmark = True
     st.session_state.results_df = None
     st.session_state.all_histories = {} # Reset histories
@@ -285,7 +285,7 @@ if st.session_state.run_benchmark:
                 "Algorithm": exp["name"], "Best Cost": best, "Avg Cost": avg,
                 "CPU Time (s)": statistics.mean(times) if times else None,
                 "Vehicles Used": vehicles_used,
-                "Iterations": int(statistics.mean(iters_list)) if iters_list else None,
+                "Accepted Neighbors": int(statistics.mean(iters_list)) if iters_list else None,
                 "Repetitions": exp["reps"], "_routes": best_routes 
             }
             if bks_cost:
@@ -297,7 +297,8 @@ if st.session_state.run_benchmark:
             row = {
                 "Algorithm": exp["name"], "Best Cost": "No Solution", "Avg Cost": "No Solution",
                 "CPU Time (s)": statistics.mean(times) if times else None,
-                "Iterations": None,
+                "Vehicles Used": None,
+                "Accepted Neighbors": None,
                 "Repetitions": exp["reps"], "_routes": None
             }
             if bks_cost:
@@ -314,7 +315,7 @@ if st.session_state.results_df is not None:
     df = st.session_state.results_df
     
     # 1. Table - conditionally show gap columns based on BKS availability
-    base_cols = ["Algorithm", "Best Cost", "Avg Cost", "CPU Time (s)", "Vehicles Used", "Iterations", "Repetitions"]
+    base_cols = ["Algorithm", "Best Cost", "Avg Cost", "CPU Time (s)", "Vehicles Used", "Accepted Neighbors", "Repetitions"]
     gap_cols = ["Best Gap (%)", "Avg Gap (%)"]
     
     # Only include gap columns if BKS was available and not None
@@ -326,28 +327,23 @@ if st.session_state.results_df is not None:
     # Ensure all columns exist in dataframe
     cols = [c for c in cols if c in df.columns]
     
-    # Create a copy for formatting to handle mixed types (strings and numbers)
+    # Create a copy for display
     df_display = df[cols].copy()
     
-    # Format only numeric columns
-    def format_row(row):
-        for col in row.index:
-            if col in ["Best Cost", "Avg Cost"]:
-                if isinstance(row[col], (int, float)) and not math.isnan(row[col]):
-                    row[col] = f"{row[col]:,.2f}"
-            elif col in ["Best Gap (%)", "Avg Gap (%)"]:
-                if isinstance(row[col], (int, float)) and not math.isnan(row[col]):
-                    row[col] = f"{row[col]:.4f}%"
-            elif col == "CPU Time (s)":
-                if isinstance(row[col], (int, float)) and not math.isnan(row[col]):
-                    row[col] = f"{row[col]:.6f}"
-            elif col == "Iterations":
-                if isinstance(row[col], (int, float)) and not math.isnan(row[col]):
-                    row[col] = f"{int(row[col])}"
-        return row
+    # Configure columns for proper sorting and display (keep as numbers, don't convert to strings)
+    column_config = {}
+    if "Best Gap (%)" in df_display.columns:
+        column_config["Best Gap (%)"] = st.column_config.NumberColumn("Best Gap (%)", format="%.4f%%")
+    if "Avg Gap (%)" in df_display.columns:
+        column_config["Avg Gap (%)"] = st.column_config.NumberColumn("Avg Gap (%)", format="%.4f%%")
+    if "Best Cost" in df_display.columns:
+        column_config["Best Cost"] = st.column_config.NumberColumn("Best Cost", format="%.2f")
+    if "Avg Cost" in df_display.columns:
+        column_config["Avg Cost"] = st.column_config.NumberColumn("Avg Cost", format="%.2f")
+    if "CPU Time (s)" in df_display.columns:
+        column_config["CPU Time (s)"] = st.column_config.NumberColumn("CPU Time (s)", format="%.6f")
     
-    df_display = df_display.apply(format_row, axis=1)
-    st.dataframe(df_display, width='stretch')
+    st.dataframe(df_display, width='stretch', column_config=column_config if column_config else None)
 
     # 2. Convergence Plots
     st.subheader("Convergence Analysis")
@@ -357,7 +353,7 @@ if st.session_state.results_df is not None:
     if time_limit: max_time_val = max(max_time_val, time_limit)
     
     # Calculate max iterations for stretching
-    max_iter_val = df["Iterations"].max() if not df.empty else 100
+    max_iter_val = df["Accepted Neighbors"].max() if not df.empty else 100
 
     col1, col2 = st.columns(2)
     with col1:
