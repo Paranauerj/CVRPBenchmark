@@ -173,7 +173,8 @@ if st.button("🚀 Run", type="primary", disabled=not (sel_inst and sel_fs and s
 
 if st.session_state.run_benchmark:
     paths = p_map.get(sel_inst)
-    with open(paths["vrp"], 'r') as f: instance_data = instance_data_parser.load_vrp_instance(f)
+    instance_data = instance_data_parser.load_vrp_instance(paths["vrp"])
+
     with open(paths["sol"], 'r') as f: bks_cost = solution_parser.parse_solution_file(f)
 
     target_val = bks_cost * (1.0 + target_gap/100.0) if target_gap else None
@@ -319,7 +320,7 @@ if st.session_state.results_df is not None:
             st.markdown(f"**{row['Algorithm']}** {cost_str}")
             if row.get("_routes"):
                 paths = p_map.get(sel_inst)
-                with open(paths["vrp"], 'r') as f: inst_data = instance_data_parser.load_vrp_instance(f)
+                inst_data = instance_data_parser.load_vrp_instance(paths["vrp"])
                 fig = plot_routes(inst_data, row["_routes"], title="")
                 st.pyplot(fig)
             else:
