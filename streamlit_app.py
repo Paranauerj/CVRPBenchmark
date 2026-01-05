@@ -335,6 +335,23 @@ if st.session_state.run_benchmark:
             results_list.append(row)
 
     st.session_state.results_df = pd.DataFrame(results_list)
+    
+    # Calculate best run solution gap (gap from global best cost found in this execution)
+    global_best_cost = None
+    for row in results_list:
+        if isinstance(row["Best Cost"], (int, float)) and row["Best Cost"] < float('inf'):
+            if global_best_cost is None or row["Best Cost"] < global_best_cost:
+                global_best_cost = row["Best Cost"]
+    
+    # Add best run solution gap to each row
+    if global_best_cost is not None:
+        for i, row in enumerate(results_list):
+            if isinstance(row["Best Cost"], (int, float)):
+                row["Best Run Gap (%)"] = ((row["Best Cost"] - global_best_cost) / global_best_cost) * 100.0
+            else:
+                row["Best Run Gap (%)"] = "N/A"
+        st.session_state.results_df = pd.DataFrame(results_list)
+    
     st.balloons()
     st.session_state.run_benchmark = False
     st.rerun() # Rerun to show results
@@ -343,14 +360,17 @@ if st.session_state.results_df is not None:
     df = st.session_state.results_df
     
     # 1. Table - conditionally show gap columns based on BKS availability
-    base_cols = ["Algorithm", "Best Cost", "Avg Cost", "CPU Time (s)", "Vehicles Used", "Accepted Neighbors", "Repetitions"]
-    gap_cols = ["Best Gap (%)", "Avg Gap (%)"]
+    base_cols = ["Algorithm", "Best Cost", "Avg Cost", "Best Run Gap (%)"]
+    bks_gap_cols = ["Best Gap (%)", "Avg Gap (%)"]
+    other_cols = ["CPU Time (s)", "Vehicles Used", "Accepted Neighbors", "Repetitions"]
     
-    # Only include gap columns if BKS was available and not None
+    cols = base_cols.copy()
+    
+    # Only include BKS gap columns if BKS was available and not None
     if bks_cost is not None and "Best Gap (%)" in df.columns:
-        cols = base_cols[:3] + gap_cols[:1] + base_cols[3:4] + gap_cols[1:] + base_cols[4:]
-    else:
-        cols = base_cols
+        cols.extend(bks_gap_cols)
+    
+    cols.extend(other_cols)
     
     # Ensure all columns exist in dataframe
     cols = [c for c in cols if c in df.columns]
@@ -360,6 +380,8 @@ if st.session_state.results_df is not None:
     
     # Configure columns for proper sorting and display (keep as numbers, don't convert to strings)
     column_config = {}
+    if "Best Run Gap (%)" in df_display.columns:
+        column_config["Best Run Gap (%)"] = st.column_config.NumberColumn("Best Run Gap (%)", format="%.4f%%")
     if "Best Gap (%)" in df_display.columns:
         column_config["Best Gap (%)"] = st.column_config.NumberColumn("Best Gap (%)", format="%.4f%%")
     if "Avg Gap (%)" in df_display.columns:
