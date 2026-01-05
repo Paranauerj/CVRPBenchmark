@@ -149,9 +149,31 @@ def find_instance_files(directory="instances"):
             path_map[base] = {"vrp": p, "sol": sol}
     return valid_names, path_map
 
+def get_instance_sources():
+    """Get list of available instance sources (subdirectories in instances/)"""
+    instances_dir = "instances"
+    sources = []
+    if os.path.exists(instances_dir):
+        for item in sorted(os.listdir(instances_dir)):
+            path = os.path.join(instances_dir, item)
+            if os.path.isdir(path):
+                sources.append(item)
+    return sources
+
 with st.sidebar:
     st.header("Configuration")
-    names, p_map = find_instance_files("instances")
+    
+    # Select instance source (uchoa, gaetano, etc.)
+    sources = get_instance_sources()
+    if sources:
+        sel_source = st.selectbox("Instance Source:", options=sources)
+        source_dir = os.path.join("instances", sel_source)
+    else:
+        st.error("No instance sources found. Please ensure instances/uchoa or instances/gaetano exist.")
+        sel_source = None
+        source_dir = "instances"
+    
+    names, p_map = find_instance_files(source_dir) if sel_source else ([], {})
     sel_inst = st.selectbox("Instance:", options=names) if names else None
     
     # Try to load BKS early to determine if gap option should be shown
