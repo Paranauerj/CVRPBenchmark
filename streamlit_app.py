@@ -144,9 +144,9 @@ def find_instance_files(directory="instances"):
     for p in vrp_files:
         base = os.path.basename(p).replace(".vrp", "")
         sol = os.path.join(directory, base + ".sol")
-        if os.path.exists(sol):
-            valid_names.append(base)
-            path_map[base] = {"vrp": p, "sol": sol}
+        # Accept instances even without .sol file (for Gaetano's instances)
+        valid_names.append(base)
+        path_map[base] = {"vrp": p, "sol": sol if os.path.exists(sol) else None}
     return valid_names, path_map
 
 def get_instance_sources():
@@ -174,7 +174,12 @@ with st.sidebar:
         source_dir = "instances"
     
     names, p_map = find_instance_files(source_dir) if sel_source else ([], {})
-    sel_inst = st.selectbox("Instance:", options=names) if names else None
+    
+    if names:
+        sel_inst = st.selectbox("Instance:", options=names)
+    else:
+        st.warning(f"⚠️ No instances found in '{sel_source}' folder.")
+        sel_inst = None
     
     # Try to load BKS early to determine if gap option should be shown
     bks_cost = None
@@ -182,7 +187,8 @@ with st.sidebar:
     num_nodes = None
     if sel_inst and sel_inst in p_map:
         try:
-            bks_cost = solution_parser.parse_solution_file(p_map[sel_inst]["sol"])
+            if p_map[sel_inst]["sol"]:  # Only try to load if .sol file exists
+                bks_cost = solution_parser.parse_solution_file(p_map[sel_inst]["sol"])
         except:
             bks_cost = None
         # Load instance to get minimum vehicles and num_nodes
