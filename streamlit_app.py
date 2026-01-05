@@ -100,7 +100,8 @@ def plot_convergence(histories_dict, metric_type="time", max_val=None):
     ax.set_xlabel("Time (s)" if metric_type == "time" else "Iterations")
     ax.set_ylabel("Cost")
     ax.set_title(f"Convergence over {metric_type.capitalize()}")
-    ax.legend()
+    if has_data:
+        ax.legend()
     ax.grid(True, linestyle='--', alpha=0.5)
     return fig
 
@@ -152,6 +153,40 @@ with st.sidebar:
     st.header("Configuration")
     names, p_map = find_instance_files("instances")
     sel_inst = st.selectbox("Instance:", options=names) if names else None
+    
+    # Try to load BKS early to determine if gap option should be shown
+    bks_cost = None
+    min_vehicles = None
+    num_nodes = None
+    if sel_inst and sel_inst in p_map:
+        try:
+            bks_cost = solution_parser.parse_solution_file(p_map[sel_inst]["sol"])
+        except:
+            bks_cost = None
+        # Load instance to get minimum vehicles and num_nodes
+        try:
+            temp_instance = instance_data_parser.load_vrp_instance(p_map[sel_inst]["vrp"])
+            min_vehicles = temp_instance.get("min_vehicles", 1)
+            num_nodes = temp_instance.get("num_nodes", 0)
+        except:
+            min_vehicles = 1
+            num_nodes = 0
+    
+    # Display number of nodes (read-only)
+    if num_nodes is not None:
+        st.write(f"**Nodes to Visit:** {num_nodes}")
+    
+    # Vehicle count selector
+    num_vehicles = None
+    if min_vehicles is not None:
+        num_vehicles = st.number_input(
+            "Number of Vehicles",
+            min_value=min_vehicles,
+            value=min_vehicles,
+            step=1,
+            help=f"Minimum required: {min_vehicles}"
+        )
+    
     st.subheader("Algorithms")
     sel_fs = st.multiselect("First Solution", list(FIRST_SOLUTIONS.keys()), ["Parallel Cheapest Insertion"])
     sel_mh = st.multiselect("Metaheuristics", list(METAHEURISTICS.keys()), ["Guided Local Search (GLS)"])
@@ -160,7 +195,15 @@ with st.sidebar:
     time_limit = st.number_input("Time (s)", 1, 3600, 5) if st.checkbox("Time Limit", True) else None
     sol_limit = st.number_input("Count", 1, 100000, 2000) if st.checkbox("Solution Limit", False) else None
     lns_limit = st.number_input("LNS (s)", 1, 100, 1) if st.checkbox("LNS Limit", False) else None
-    target_gap = st.number_input("Gap %", 0.0, 100.0, 1.0) if st.checkbox("Stop at Gap", False) else None
+    
+    # Only show gap option if BKS is available
+    if bks_cost is not None:
+        target_gap = st.number_input("Gap %", 0.0, 100.0, 1.0) if st.checkbox("Stop at Gap", False) else None
+    else:
+        target_gap = None
+        if sel_inst:
+            st.warning("⚠️ Best Known Solution not available. Gap comparison disabled.")
+    
     no_improv = st.number_input("No Improv (s)", 1, 300, 5) if st.checkbox("Stop No Improv (s)", False) else None
     no_improv_iter = st.number_input("No Improv Iterations", 100, 10000, 100) if st.checkbox("Stop No Improv (Iter)", False) else None
 
@@ -174,10 +217,15 @@ if st.button("🚀 Run", type="primary", disabled=not (sel_inst and sel_fs and s
 if st.session_state.run_benchmark:
     paths = p_map.get(sel_inst)
     instance_data = instance_data_parser.load_vrp_instance(paths["vrp"])
+    
+    # Override num_vehicles with user selection
+    if num_vehicles is not None:
+        instance_data['num_vehicles'] = num_vehicles
+        instance_data['vehicle_capacities'] = [instance_data['capacity']] * num_vehicles
+    
+    # bks_cost is already loaded from sidebar
 
-    with open(paths["sol"], 'r') as f: bks_cost = solution_parser.parse_solution_file(f)
-
-    target_val = bks_cost * (1.0 + target_gap/100.0) if target_gap else None
+    target_val = bks_cost * (1.0 + target_gap/100.0) if (target_gap and bks_cost) else None
 
     experiments = []
     for fs in sel_fs:
@@ -232,9 +280,11 @@ if st.session_state.run_benchmark:
         if costs:
             best = min(costs)
             avg = statistics.mean(costs)
+            vehicles_used = len(best_routes) if best_routes else None
             row = {
                 "Algorithm": exp["name"], "Best Cost": best, "Avg Cost": avg,
                 "CPU Time (s)": statistics.mean(times) if times else None,
+                "Vehicles Used": vehicles_used,
                 "Iterations": int(statistics.mean(iters_list)) if iters_list else None,
                 "Repetitions": exp["reps"], "_routes": best_routes 
             }
@@ -263,8 +313,18 @@ if st.session_state.run_benchmark:
 if st.session_state.results_df is not None:
     df = st.session_state.results_df
     
-    # 1. Table
-    cols = ["Algorithm", "Best Cost", "Best Gap (%)", "Avg Cost", "Avg Gap (%)", "CPU Time (s)", "Iterations", "Repetitions"]
+    # 1. Table - conditionally show gap columns based on BKS availability
+    base_cols = ["Algorithm", "Best Cost", "Avg Cost", "CPU Time (s)", "Vehicles Used", "Iterations", "Repetitions"]
+    gap_cols = ["Best Gap (%)", "Avg Gap (%)"]
+    
+    # Only include gap columns if BKS was available and not None
+    if bks_cost is not None and "Best Gap (%)" in df.columns:
+        cols = base_cols[:3] + gap_cols[:1] + base_cols[3:4] + gap_cols[1:] + base_cols[4:]
+    else:
+        cols = base_cols
+    
+    # Ensure all columns exist in dataframe
+    cols = [c for c in cols if c in df.columns]
     
     # Create a copy for formatting to handle mixed types (strings and numbers)
     df_display = df[cols].copy()

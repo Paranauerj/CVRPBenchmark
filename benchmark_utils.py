@@ -38,5 +38,5 @@ def execute_and_measure(algorithm_func, instance_data, **kwargs):
         "objective_value": objective_value,
         "iterations": iterations,
         "routes": routes,
-        "history": history # --- NEW ---
+        "history": history
     }

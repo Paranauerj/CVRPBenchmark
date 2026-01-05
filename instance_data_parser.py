@@ -1,5 +1,4 @@
 import math
-import os
 import numpy as np
 import vrplib
 
@@ -16,7 +15,12 @@ def load_vrp_instance(file_path):
     data['capacity'] = instance.get("capacity")
 
     total_demand = np.sum(data['demands'])
-    data['num_vehicles'] = int(np.ceil(total_demand / data['capacity']))
+    min_vehicles = int(np.ceil(total_demand / data['capacity']))
+    
+    # Store minimum vehicles needed
+    data['min_vehicles'] = min_vehicles
+    # Default to minimum, but can be overridden
+    data['num_vehicles'] = min_vehicles
     data['vehicle_capacities'] = np.full(data['num_vehicles'], data['capacity'])
 
     raw_coords = instance.get("node_coord")
@@ -42,6 +46,5 @@ def load_vrp_instance(file_path):
                 dist = int(math.sqrt((c1[0] - c2[0])**2 + (c1[1] - c2[1])**2) + 0.5)
                 distance_matrix[i][j] = dist
     
-        data['distance_matrix'] = distance_matrix.tolist()
-    
+    data['distance_matrix'] = distance_matrix.tolist()
     return data
