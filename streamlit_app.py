@@ -12,7 +12,43 @@ import random
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import numpy as np
+import io
 from ortools.constraint_solver import routing_enums_pb2
+
+# --- Helper Functions for Bulk Benchmark ---
+def get_climate_from_filename(filename):
+    """
+    Extracts climate from Gaetano filenames like 'LDG95_3376_rain_95_0088'.
+    Assumes format: Series_Depot_Climate_...
+    """
+    parts = filename.split('_')
+    # Usually index 2 is climate (rain, fog, snow, none), but let's be safe
+    valid_climates = {'rain', 'fog', 'snow', 'none'}
+    for part in parts:
+        if part.lower() in valid_climates:
+            return part.lower()
+    return "unknown"
+
+def get_cost_at_time(history, time_limit_sec):
+    """
+    Finds the best cost found within the time_limit_sec based on history.
+    History is a list of tuples: (time_elapsed, iterations, cost)
+    """
+    if not history:
+        return None
+    
+    # History is strictly chronological. Find the last entry where t <= limit
+    best_cost_at_t = None
+    
+    for t, iters, cost in history:
+        if t <= time_limit_sec:
+            best_cost_at_t = cost
+        else:
+            # Since history is sorted by time, we can stop early
+            break
+            
+    # If the first solution took longer than time_limit_sec, return None
+    return best_cost_at_t
 
 # --- Page Configuration ---
 st.set_page_config(page_title="CVRP Benchmarker", layout="wide")
@@ -21,6 +57,10 @@ if 'run_benchmark' not in st.session_state: st.session_state.run_benchmark = Fal
 if 'results_df' not in st.session_state: st.session_state.results_df = None
 if 'benchmark_results' not in st.session_state: st.session_state.benchmark_results = []
 if 'all_histories' not in st.session_state: st.session_state.all_histories = {} # Store history for plotting
+if 'run_bulk' not in st.session_state: st.session_state.run_bulk = False
+if 'confirm_bulk' not in st.session_state: st.session_state.confirm_bulk = False
+if 'show_bulk_config' not in st.session_state: st.session_state.show_bulk_config = False
+if 'selected_bulk_instances' not in st.session_state: st.session_state.selected_bulk_instances = []
 
 # --- Plotting Functions ---
 def plot_routes(instance_data, routes, title="Routes"):
@@ -234,6 +274,50 @@ with st.sidebar:
     
     no_improv = st.number_input("No Improv (s)", 1, 300, 5) if st.checkbox("Stop No Improv (s)", False) else None
     no_improv_iter = st.number_input("No Improv Accepted Neighbors", 20, 10000, 100) if st.checkbox("Stop No Improv (Accepted Neighbors)", False) else None
+    
+    # --- Bulk Operations Section ---
+    st.markdown("---")
+    st.subheader("Bulk Operations")
+
+    if st.button("📦 Bulk Benchmark (Gaetano)", help="Configure and run on Gaetano instances"):
+        st.session_state.show_bulk_config = True
+
+    # Configuration Block (Appears after button click)
+    if st.session_state.show_bulk_config:
+        st.markdown("#### Select Instances")
+        gaetano_dir = os.path.join("instances", "gaetano")
+        
+        if os.path.exists(gaetano_dir):
+            # 1. Find all available instances
+            g_names, _ = find_instance_files(gaetano_dir)
+            
+            if g_names:
+                # 2. Multiselect Widget (Default = All)
+                selected = st.multiselect(
+                    "Choose instances to run:",
+                    options=g_names,
+                    default=g_names,  # Pre-select all
+                    help="Remove instances you want to skip."
+                )
+                
+                st.warning(f"⚠️ You are about to run {len(selected)} instances. This may take significant time.")
+                
+                col_run, col_cancel = st.columns(2)
+                
+                # 3. Confirmation Buttons
+                if col_run.button("✅ Run Selected", type="primary"):
+                    st.session_state.selected_bulk_instances = selected
+                    st.session_state.run_bulk = True
+                    st.session_state.show_bulk_config = False  # Close config
+                    st.rerun()
+                    
+                if col_cancel.button("❌ Cancel"):
+                    st.session_state.show_bulk_config = False
+                    st.rerun()
+            else:
+                st.error("No instances found in 'instances/gaetano'.")
+        else:
+            st.error(f"Folder not found: {gaetano_dir}")
 
 st.title("CVRP Benchmarker 📊")
 if st.button("🚀 Run", type="primary", disabled=not (sel_inst and sel_fs and sel_mh) or st.session_state.run_benchmark, width='stretch'):
@@ -355,6 +439,183 @@ if st.session_state.run_benchmark:
     st.balloons()
     st.session_state.run_benchmark = False
     st.rerun() # Rerun to show results
+
+# --- Bulk Benchmark Execution ---
+if st.session_state.run_bulk:
+    st.title("📦 Bulk Benchmark Execution")
+    
+    # 1. Retrieve Selected Instances & Path Map
+    target_instances = st.session_state.get('selected_bulk_instances', [])
+    gaetano_dir = os.path.join("instances", "gaetano")
+    
+    # We need the path map to find the actual file paths for the selected names
+    _, path_map = find_instance_files(gaetano_dir)
+
+    if not target_instances:
+        st.error("No instances selected for bulk run.")
+        st.session_state.run_bulk = False
+        st.stop()
+
+    # 2. Prepare Algorithms (from Sidebar selection)
+    bulk_experiments = []
+    for fs in sel_fs:
+        for mh in sel_mh:
+            algo_name = f"{mh.split('(')[0].strip()} [{fs.split('(')[0].strip()}]"
+            kw = {
+                "first_solution_strategy": FIRST_SOLUTIONS[fs],
+                "local_search_metaheuristic": METAHEURISTICS[mh],
+                "time_limit_seconds": time_limit, 
+                "solution_limit": sol_limit,
+                "lns_time_limit_seconds": lns_limit,
+                "target_cost": None,  # Cannot use gap target in bulk
+                "no_improvement_limit": no_improv,
+                "no_improvement_iterations_limit": no_improv_iter
+            }
+            bulk_experiments.append({"name": algo_name, "func": configurable_solver.solve_cvrp, "kwargs": kw})
+
+    if not bulk_experiments:
+        st.error("Please select at least one algorithm in the sidebar.")
+        st.session_state.run_bulk = False
+        st.stop()
+
+    # 3. Run Loop
+    bulk_results = []
+    progress_bar = st.progress(0.0)
+    status_text = st.empty()
+    
+    total_steps = len(target_instances) * len(bulk_experiments) * reps
+    current_step = 0
+    
+    # Time checkpoints for feature extraction
+    time_checkpoints = [5, 10, 15, 20, 30, 60]
+
+    for inst_name in target_instances:
+        
+        # Safety check if file still exists
+        if inst_name not in path_map:
+            continue
+        
+        # Load Instance Data
+        p_info = path_map[inst_name]
+        try:
+            inst_data = instance_data_parser.load_vrp_instance(p_info["vrp"])
+            # For bulk runs we keep the instance default number of vehicles
+            # (do not override with the sidebar `num_vehicles`).
+        except Exception as e:
+            st.warning(f"❌ Skipping {inst_name}: {e}")
+            continue
+
+        # Extract Static Features
+        climate = get_climate_from_filename(inst_name)
+        n_customers = inst_data.get('num_nodes', 0) - 1  # Exclude depot
+        n_vehicles = inst_data.get('num_vehicles', 0)
+        capacity = inst_data.get('capacity', 0)
+        
+        # Load BKS if available
+        bks_val = None
+        if p_info["sol"]:
+            try:
+                bks_val = solution_parser.parse_solution_file(p_info["sol"])
+            except: 
+                pass
+
+        for exp in bulk_experiments:
+            algo_costs = []
+            algo_times = []
+            
+            # Collect costs at each time checkpoint across repetitions
+            checkpoint_collectors = {t: [] for t in time_checkpoints}
+
+            for r in range(reps):
+                current_step += 1
+                progress_bar.progress(min(current_step / total_steps, 1.0))
+                status_text.text(f"Processing: {inst_name} | {exp['name']} | Rep {r+1}/{reps}")
+                
+                # Randomize seed
+                cur_kw = exp["kwargs"].copy()
+                cur_kw["random_seed"] = random.randint(0, 2**31 - 1)
+                
+                # Run Solver
+                res = execute_and_measure(exp["func"], inst_data, **cur_kw)
+                
+                if res["objective_value"] is not None:
+                    algo_costs.append(res["objective_value"])
+                    algo_times.append(res["cpu_time"])
+                    
+                    # Extract history features
+                    history = res.get("history", [])
+                    for t_chk in time_checkpoints:
+                        cost_at_t = get_cost_at_time(history, t_chk)
+                        if cost_at_t is not None:
+                            checkpoint_collectors[t_chk].append(cost_at_t)
+                
+            # Aggregate Results for this Algo on this Instance
+            if algo_costs:
+                avg_cost = statistics.mean(algo_costs)
+                best_cost = min(algo_costs)
+                avg_time = statistics.mean(algo_times)
+                
+                # Calculate Gaps
+                best_gap = ((best_cost - bks_val) / bks_val * 100) if bks_val else None
+                avg_gap = ((avg_cost - bks_val) / bks_val * 100) if bks_val else None
+                
+                row = {
+                    "Instance": inst_name,
+                    "Climate": climate,
+                    "Customers": n_customers,
+                    "Vehicles": n_vehicles,
+                    "Capacity": capacity,
+                    "Algorithm": exp["name"],
+                    "Repetitions": reps,
+                    "Avg Cost": avg_cost,
+                    "Best Cost": best_cost,
+                    "BKS Cost": bks_val,
+                    "Best Gap (%)": best_gap,
+                    "Avg Gap (%)": avg_gap,
+                    "Avg CPU Time (s)": avg_time
+                }
+                
+                # Add time checkpoints (Average cost at T across reps)
+                for t_chk in time_checkpoints:
+                    costs_at_t = checkpoint_collectors[t_chk]
+                    if costs_at_t:
+                        row[f"Avg Cost @ {t_chk}s"] = statistics.mean(costs_at_t)
+                        row[f"Best Cost @ {t_chk}s"] = min(costs_at_t)
+                    else:
+                        row[f"Avg Cost @ {t_chk}s"] = None
+                        row[f"Best Cost @ {t_chk}s"] = None
+                        
+                bulk_results.append(row)
+
+    # 4. Finish and Export
+    st.success("✅ Bulk Benchmark Complete!")
+    st.session_state.run_bulk = False  # Reset state
+    
+    status_text.empty()
+    progress_bar.empty()
+    
+    if bulk_results:
+        df_bulk = pd.DataFrame(bulk_results)
+        
+        # Display Preview
+        st.subheader("Results Preview")
+        st.dataframe(df_bulk.head(10), use_container_width=True)
+        
+        # Excel Export
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            df_bulk.to_excel(writer, sheet_name='Benchmark', index=False)
+            
+        st.download_button(
+            label="📥 Download Results (Excel)",
+            data=buffer.getvalue(),
+            file_name="vrp_bulk_benchmark_results.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+    else:
+        st.warning("⚠️ No results were generated. Check your configurations.")
+    
+    st.stop()
 
 if st.session_state.results_df is not None:
     df = st.session_state.results_df
