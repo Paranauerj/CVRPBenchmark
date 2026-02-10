@@ -164,7 +164,8 @@ def render_sidebar():
         "lns_limit": lns_limit,
         "target_gap": target_gap,
         "no_improv": no_improv,
-        "no_improv_iter": no_improv_iter
+        "no_improv_iter": no_improv_iter,
+        "save_to_server": st.session_state.get('save_bulk_to_server', False)
     }
 
 
@@ -191,12 +192,20 @@ def render_bulk_operations():
                     help="Remove instances you want to skip."
                 )
                 
+                st.markdown("#### Options")
+                save_to_server = st.checkbox(
+                    "💾 Save in the server after finished",
+                    value=False,
+                    help="Save the Excel file to the server after benchmark completes."
+                )
+                
                 st.warning(f"⚠️ You are about to run {len(selected)} instances. This may take significant time.")
                 
                 col_run, col_cancel = st.columns(2)
                 
                 if col_run.button("✅ Run Selected", type="primary"):
                     st.session_state.selected_bulk_instances = selected
+                    st.session_state.save_bulk_to_server = save_to_server
                     st.session_state.run_bulk = True
                     st.session_state.show_bulk_config = False
                     st.rerun()

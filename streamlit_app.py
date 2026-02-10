@@ -98,7 +98,8 @@ if st.session_state.run_bulk:
         "lns_limit": sidebar_settings["lns_limit"],
         "no_improv": sidebar_settings["no_improv"],
         "no_improv_iter": sidebar_settings["no_improv_iter"],
-        "reps": sidebar_settings["reps"]
+        "reps": sidebar_settings["reps"],
+        "save_to_server": sidebar_settings.get("save_to_server", False)
     }
     
     # Run bulk benchmark

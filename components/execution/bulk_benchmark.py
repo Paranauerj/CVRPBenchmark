@@ -6,6 +6,8 @@ import statistics
 import random
 import io
 import base64
+import os
+from datetime import datetime
 import streamlit.components.v1 as components
 from benchmark_utils import execute_and_measure
 from components.ui.sidebar import find_instance_files
@@ -179,6 +181,22 @@ def run_bulk_benchmark(settings):
             df_bulk.to_excel(writer, sheet_name='Benchmark', index=False)
 
         data = buffer.getvalue()
+        
+        # Save to server if enabled
+        if settings.get("save_to_server", False):
+            server_dir = "server_output"
+            os.makedirs(server_dir, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            server_filename = f"vrp_bulk_benchmark_results_{timestamp}.xlsx"
+            server_path = os.path.join(server_dir, server_filename)
+            
+            try:
+                with open(server_path, "wb") as f:
+                    f.write(data)
+                st.success(f"✅ Results saved to server: {server_path}")
+            except Exception as e:
+                st.error(f"❌ Failed to save to server: {e}")
+        
         # Create a base64 data URI and auto-click a hidden link via an HTML component
         b64 = base64.b64encode(data).decode()
         href = f"data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{b64}"
