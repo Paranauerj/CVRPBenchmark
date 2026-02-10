@@ -80,7 +80,7 @@ def run_bulk_benchmark(settings):
             inst_data = instance_data_parser.load_vrp_instance(p_info["vrp"])
             # Bulk runs keep instance default vehicle counts
         except Exception as e:
-            st.warning(f"❌ Skipping {inst_name}: {e}")
+            st.warning(f"Skipping {inst_name}: {e}")
             continue
 
         # Extract features (richer metadata from filename)
@@ -161,7 +161,7 @@ def run_bulk_benchmark(settings):
                         
                 bulk_results.append(row)
 
-    st.success("✅ Bulk Benchmark Complete!")
+    st.success("Bulk Benchmark Complete!")
     st.session_state.run_bulk = False
     
     status_text.empty()
@@ -174,7 +174,7 @@ def run_bulk_benchmark(settings):
         st.dataframe(df_bulk.head(10), use_container_width=True)
 
         # Excel file will be downloaded when execution is finished
-        st.info("📥 Excel file will be downloaded when execution is finished")
+        st.info("Excel file will be downloaded when execution is finished")
 
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
@@ -193,9 +193,9 @@ def run_bulk_benchmark(settings):
             try:
                 with open(server_path, "wb") as f:
                     f.write(data)
-                st.success(f"✅ Results saved to server: {server_path}")
+                st.success(f"Results saved to server: {server_path}")
             except Exception as e:
-                st.error(f"❌ Failed to save to server: {e}")
+                st.error(f"Failed to save to server: {e}")
         
         # Create a base64 data URI and auto-click a hidden link via an HTML component
         b64 = base64.b64encode(data).decode()
@@ -203,17 +203,17 @@ def run_bulk_benchmark(settings):
         html = f'<a id="dl" href="{href}" download="vrp_bulk_benchmark_results.xlsx"></a>\n'
         html += '<script>document.getElementById("dl").click();</script>'
         components.html(html, height=0)
-        st.success("✅ Excel file download started in your browser.")
+        st.success("Excel file download started in your browser.")
 
         # Fallback download button if automatic download is blocked
         st.download_button(
-            label="📥 If automatic download failed, click to download",
+            label="If automatic download failed, click to download",
             data=data,
             file_name="vrp_bulk_benchmark_results.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
     else:
-        st.warning("⚠️ No results were generated. Check your configurations.")
+        st.warning("No results were generated. Check your configurations.")
     
     st.stop()
 

@@ -31,7 +31,7 @@ def execute_and_measure(algorithm_func, instance_data, **kwargs):
     if objective_value is not None:
         print(f"    > Found: Cost={objective_value:.2f} (Time={cpu_time:.4f}s)")
     else:
-        print(f"    > ❌ No Solution Found (Time={cpu_time:.4f}s)")
+        print(f"    > No Solution Found (Time={cpu_time:.4f}s)")
 
     return {
         "cpu_time": cpu_time,

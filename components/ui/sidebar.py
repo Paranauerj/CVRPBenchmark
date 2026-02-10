@@ -87,7 +87,7 @@ def render_sidebar():
         if names:
             sel_inst = st.selectbox("Instance:", options=names)
         else:
-            st.warning(f"⚠️ No instances found in '{sel_source}' folder.")
+            st.warning(f"No instances found in '{sel_source}' folder.")
             sel_inst = None
         
         # Load BKS and instance info
@@ -141,7 +141,7 @@ def render_sidebar():
         else:
             target_gap = None
             if sel_inst:
-                st.warning("⚠️ Best Known Solution not available. Gap comparison disabled.")
+                st.warning("Best Known Solution not available. Gap comparison disabled.")
         
         # No improvement options
         no_improv = st.number_input("No Improv (s)", 1, 300, 5) if st.checkbox("Stop No Improv (s)", False) else None
@@ -174,7 +174,7 @@ def render_bulk_operations():
     st.markdown("---")
     st.subheader("Bulk Operations")
 
-    if st.button("📦 Bulk Benchmark (Gaetano)", help="Configure and run on Gaetano instances"):
+    if st.button("Bulk Benchmark (Gaetano)", help="Configure and run on Gaetano instances"):
         st.session_state.show_bulk_config = True
 
     if st.session_state.show_bulk_config:
@@ -194,23 +194,23 @@ def render_bulk_operations():
                 
                 st.markdown("#### Options")
                 save_to_server = st.checkbox(
-                    "� Run in Background (continue if page closes)",
+                    "Run in Background (continue if page closes)",
                     value=False,
                     help="Run benchmark in the background. The benchmark will continue even if you close the page. Results will be saved to the server."
                 )
                 
-                st.warning(f"⚠️ You are about to run {len(selected)} instances. This may take significant time.")
+                st.warning(f"You are about to run {len(selected)} instances. This may take significant time.")
                 
                 col_run, col_cancel = st.columns(2)
                 
-                if col_run.button("✅ Run Selected", type="primary"):
+                if col_run.button("Run Selected", type="primary"):
                     st.session_state.selected_bulk_instances = selected
                     st.session_state.save_bulk_to_server = save_to_server
                     st.session_state.run_bulk = True
                     st.session_state.show_bulk_config = False
                     st.rerun()
                     
-                if col_cancel.button("❌ Cancel"):
+                if col_cancel.button("Cancel"):
                     st.session_state.show_bulk_config = False
                     st.rerun()
             else:

@@ -109,7 +109,7 @@ if st.session_state.run_benchmark:
 
 # --- Bulk Benchmark Execution ---
 if st.session_state.run_bulk:
-    st.title("📦 Bulk Benchmark Execution")
+    st.title("Bulk Benchmark Execution")
     bulk_settings = _prepare_bulk_benchmark_settings(sidebar_settings)
     
     # Check if running in background
@@ -117,7 +117,7 @@ if st.session_state.run_bulk:
         task_id = str(uuid4())[:8]
         run_background_task(run_bulk_benchmark_background, task_id, bulk_settings)
         
-        st.success(f"✅ Benchmark started in background! Task ID: `{task_id}`")
+        st.success(f"Benchmark started in background! Task ID: `{task_id}`")
         st.info("You can now close this page. The benchmark will continue running on the server.")
         st.markdown("Your results will be saved to the server when complete.")
         
