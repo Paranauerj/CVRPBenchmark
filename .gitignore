@@ -4,6 +4,7 @@ __pycache__/
 *.pyd
 env/
 venv/
+server_output/
 .idea/
 .vscode/
 .DS_Store

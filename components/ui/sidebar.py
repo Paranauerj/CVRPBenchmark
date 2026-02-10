@@ -194,9 +194,9 @@ def render_bulk_operations():
                 
                 st.markdown("#### Options")
                 save_to_server = st.checkbox(
-                    "💾 Save in the server after finished",
+                    "� Run in Background (continue if page closes)",
                     value=False,
-                    help="Save the Excel file to the server after benchmark completes."
+                    help="Run benchmark in the background. The benchmark will continue even if you close the page. Results will be saved to the server."
                 )
                 
                 st.warning(f"⚠️ You are about to run {len(selected)} instances. This may take significant time.")
