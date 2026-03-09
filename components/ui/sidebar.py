@@ -199,13 +199,22 @@ def render_bulk_operations():
                     help="Run benchmark in the background. The benchmark will continue even if you close the page. Results will be saved to the server."
                 )
                 
-                st.warning(f"You are about to run {len(selected)} instances. This may take significant time.")
+                num_parallel = st.slider(
+                    "Parallel Instances",
+                    min_value=1,
+                    max_value=16,
+                    value=2,
+                    help="Number of instances to process in parallel. More parallel tasks use more CPU/memory but finish faster."
+                )
+                
+                st.warning(f"You are about to run {len(selected)} instances with {num_parallel} parallel workers. This may take significant time.")
                 
                 col_run, col_cancel = st.columns(2)
                 
                 if col_run.button("Run Selected", type="primary"):
                     st.session_state.selected_bulk_instances = selected
                     st.session_state.save_bulk_to_server = save_to_server
+                    st.session_state.num_parallel_instances = num_parallel
                     st.session_state.run_bulk = True
                     st.session_state.show_bulk_config = False
                     st.rerun()

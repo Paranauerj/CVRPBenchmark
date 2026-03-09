@@ -3,6 +3,10 @@
 import streamlit as st
 import statistics
 import random
+import json
+import os
+import copy
+from datetime import datetime
 from benchmark_utils import execute_and_measure
 
 
@@ -124,3 +128,164 @@ def run_single_benchmark(instance_data, settings, bks_cost):
     prog.empty()
     
     return df
+
+
+def run_single_benchmark_background(task, settings, instance_data_file, bks_cost):
+    """
+    Run single benchmark as a background task.
+    Loads instance data from file since it can't be serialized easily.
+    """
+    import pandas as pd
+    import instance_data_parser
+    
+    task.log(f"==================== SINGLE BENCHMARK START ====================")
+    task.log(f"Task ID: {task.task_id}")
+    
+    try:
+        # Load instance data
+        task.log(f"Loading instance: {instance_data_file}")
+        instance_data = instance_data_parser.load_vrp_instance(instance_data_file)
+        task.log(f"Instance loaded successfully")
+        
+        # Prepare experiments
+        experiments = []
+        for fs in settings["sel_fs"]:
+            for mh in settings["sel_mh"]:
+                algo = f"{mh.split('(')[0].strip()} [{fs.split('(')[0].strip()}]"
+                kw = {
+                    "first_solution_strategy": settings["fs_enum"][fs],
+                    "local_search_metaheuristic": settings["mh_enum"][mh],
+                    "time_limit_seconds": settings["time_limit"],
+                    "solution_limit": settings["sol_limit"],
+                    "lns_time_limit_seconds": settings["lns_limit"],
+                    "target_cost": settings["target_val"],
+                    "no_improvement_limit": settings["no_improv"],
+                    "no_improvement_iterations_limit": settings["no_improv_iter"]
+                }
+                experiments.append({
+                    "name": algo,
+                    "func": settings["solver_func"],
+                    "kwargs": kw,
+                    "reps": settings["reps"]
+                })
+        
+        task.log(f"Prepared {len(experiments)} experiments")
+        
+        results_list = []
+        total = sum(e["reps"] for e in experiments) * 6  # Account for potential 6 vehicle attempts (0 to +5)
+        current_step = 0
+        
+        for exp in experiments:
+            # Try with increasing number of vehicles (0 = original, 1-5 = +1 to +5)
+            for vehicle_attempt in range(6):
+                costs, times, iters_list, best_routes = [], [], [], None
+                best_cost_run = float('inf')
+                
+                # Prepare instance data with modified vehicle count
+                working_instance = instance_data.copy()
+                if vehicle_attempt > 0:
+                    # Make a deep copy for modification
+                    working_instance = copy.deepcopy(instance_data)
+                    original_num = working_instance['num_vehicles']
+                    working_instance['num_vehicles'] = original_num + vehicle_attempt
+                    working_instance['vehicle_capacities'] = [working_instance['capacity']] * working_instance['num_vehicles']
+                    task.log(f"Retrying {exp['name']} with {working_instance['num_vehicles']} vehicles (+{vehicle_attempt})")
+                
+                for rep in range(exp["reps"]):
+                    # Check for stop signal
+                    if task.should_stop():
+                        task.log("Stop signal received, halting execution...", level="error")
+                        task.set_completed(error="Benchmark stopped by user")
+                        return
+                    
+                    current_step += 1
+                    step_name = f"{exp['name']} | Rep {rep+1}/{settings['reps']}"
+                    if vehicle_attempt > 0:
+                        step_name += f" | Vehicles +{vehicle_attempt}"
+                    task.update_progress(current_step, total, step_name)
+                    
+                    cur_kw = exp["kwargs"].copy()
+                    cur_kw["random_seed"] = random.randint(0, 2**31 - 1)
+                    
+                    res = execute_and_measure(exp["func"], working_instance, **cur_kw)
+                    
+                    if res["cpu_time"] is not None:
+                        times.append(res["cpu_time"])
+                    if res["objective_value"] is not None:
+                        costs.append(res["objective_value"])
+                        if res["objective_value"] < best_cost_run:
+                            best_cost_run = res["objective_value"]
+                            best_routes = res["routes"]
+                    if res["iterations"] is not None:
+                        iters_list.append(res["iterations"])
+                
+                # If we found a solution, break out of vehicle retry loop
+                if costs:
+                    best = min(costs)
+                    avg = statistics.mean(costs)
+                    vehicles_used = len(best_routes) if best_routes else None
+                    
+                    # Add info about which vehicle attempt succeeded
+                    algo_name = exp["name"]
+                    if vehicle_attempt > 0:
+                        algo_name += f" (+{vehicle_attempt}V)"
+                    
+                    row = {
+                        "Algorithm": algo_name,
+                        "Best Cost": best,
+                        "Avg Cost": avg,
+                        "CPU Time (s)": statistics.mean(times) if times else None,
+                        "Vehicles Used": vehicles_used,
+                        "Accepted Neighbors": int(statistics.mean(iters_list)) if iters_list else None,
+                        "Repetitions": settings["reps"],
+                    }
+                    if bks_cost:
+                        row["Best Gap (%)"] = ((best - bks_cost) / bks_cost) * 100.0
+                        row["Avg Gap (%)"] = ((avg - bks_cost) / bks_cost) * 100.0
+                    results_list.append(row)
+                    task.log(f"Solution found for {exp['name']} with {vehicle_attempt} additional vehicles")
+                    break  # Exit vehicle retry loop since we found a solution
+                
+                # If this is the last vehicle attempt and still no solution, record as failed
+                if vehicle_attempt == 5:
+                    row = {
+                        "Algorithm": exp["name"],
+                        "Best Cost": "No Solution",
+                        "Avg Cost": "No Solution",
+                        "CPU Time (s)": statistics.mean(times) if times else None,
+                        "Vehicles Used": None,
+                        "Accepted Neighbors": None,
+                        "Repetitions": settings["reps"],
+                    }
+                    if bks_cost:
+                        row["Best Gap (%)"] = None
+                        row["Avg Gap (%)"] = None
+                    results_list.append(row)
+                    task.log(f"No solution found for {exp['name']} even with +5 vehicles", level="warning")
+        
+        
+        # Save results
+        task.log(f"Saving {len(results_list)} results")
+        if results_list:
+            df = pd.DataFrame(results_list)
+            
+            server_dir = "server_output"
+            os.makedirs(server_dir, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            results_filename = f"vrp_single_benchmark_results_{timestamp}.xlsx"
+            results_path = os.path.join(server_dir, results_filename)
+            
+            task.log(f"Writing results to {results_path}")
+            df.to_excel(results_path, sheet_name='Benchmark', index=False)
+            
+            task.log(f"Results saved successfully!")
+            task.set_completed(results_file=results_path)
+            task.log(f"==================== SINGLE BENCHMARK COMPLETE ====================")
+        else:
+            error_msg = "No results generated. Check your configurations."
+            task.set_completed(error=error_msg)
+            task.log(error_msg, level="error")
+    except Exception as e:
+        error_msg = f"Error during benchmark: {str(e)}"
+        task.set_completed(error=error_msg)
+        task.log(error_msg, level="error")

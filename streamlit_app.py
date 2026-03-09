@@ -6,22 +6,23 @@ import configurable_solver
 from uuid import uuid4
 
 from components.ui.sidebar import render_sidebar, FIRST_SOLUTIONS, METAHEURISTICS
-from components.execution.single_benchmark import run_single_benchmark
+from components.execution.single_benchmark import run_single_benchmark, run_single_benchmark_background
 from components.execution.bulk_benchmark import run_bulk_benchmark, run_bulk_benchmark_background
 from components.execution.background_task import run_background_task
 from components.visualization.results_display import display_results
+from components.visualization.monitoring import render_monitor_page
 
 
 # --- Helper Functions ---
 def _init_session_state():
     """Initialize session state variables."""
     defaults = {
-        'run_benchmark': False,
         'results_df': None,
         'all_histories': {},
-        'run_bulk': False,
         'show_bulk_config': False,
-        'selected_bulk_instances': []
+        'selected_bulk_instances': [],
+        'run_bulk': False,
+        'active_tab': 'Run Benchmarks'
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -63,6 +64,7 @@ def _prepare_bulk_benchmark_settings(sidebar_settings):
     settings = _prepare_benchmark_settings(sidebar_settings)
     settings["save_to_server"] = sidebar_settings.get("save_to_server", False)
     settings["selected_instances"] = st.session_state.get('selected_bulk_instances', [])
+    settings["num_parallel_instances"] = st.session_state.get('num_parallel_instances', 2)
     return settings
 
 
@@ -75,66 +77,81 @@ _init_session_state()
 # --- Main Page ---
 st.title("CVRP Benchmarker 📊")
 
-# Render sidebar and get settings
+# Render sidebar OUTSIDE tabs (so it's always accessible)
 sidebar_settings = render_sidebar()
 
-# Add Run button
-if st.button("🚀 Run", type="primary", 
-             disabled=not (sidebar_settings["sel_inst"] and sidebar_settings["sel_fs"] and sidebar_settings["sel_mh"]) or st.session_state.run_benchmark,
-             width='stretch'):
-    st.session_state.run_benchmark = True
-    st.session_state.results_df = None
-    st.session_state.all_histories = {}
-    st.rerun()
+# Create tabs
+tab1, tab2 = st.tabs(["🚀 Run Benchmarks", "📊 Monitor"])
 
+# --- RUN BENCHMARKS TAB ---
+with tab1:
+    st.session_state.active_tab = 'Run Benchmarks'
 
-# --- Single Instance Benchmark Execution ---
-if st.session_state.run_benchmark:
-    paths = sidebar_settings["p_map"].get(sidebar_settings["sel_inst"])
-    instance_data = instance_data_parser.load_vrp_instance(paths["vrp"])
-    
-    # Override num_vehicles with user selection for single benchmark
-    if sidebar_settings["num_vehicles"] is not None:
-        instance_data['num_vehicles'] = sidebar_settings["num_vehicles"]
-        instance_data['vehicle_capacities'] = [instance_data['capacity']] * sidebar_settings["num_vehicles"]
-    
-    # Prepare and run single benchmark
-    benchmark_settings = _prepare_single_benchmark_settings(sidebar_settings)
-    st.session_state.results_df = run_single_benchmark(instance_data, benchmark_settings, sidebar_settings["bks_cost"])
-    
-    st.balloons()
-    st.session_state.run_benchmark = False
-    st.rerun()
-
-
-# --- Bulk Benchmark Execution ---
-if st.session_state.run_bulk:
-    st.title("Bulk Benchmark Execution")
-    bulk_settings = _prepare_bulk_benchmark_settings(sidebar_settings)
-    
-    # Check if running in background
-    if sidebar_settings.get("save_to_server", False):
+    # Add Run button
+    if st.button("🚀 Run", type="primary", 
+                 disabled=not (sidebar_settings["sel_inst"] and sidebar_settings["sel_fs"] and sidebar_settings["sel_mh"]),
+                 width='stretch'):
+        # Start single benchmark in background
         task_id = str(uuid4())[:8]
-        run_background_task(run_bulk_benchmark_background, task_id, bulk_settings)
+        instance_file = sidebar_settings["p_map"].get(sidebar_settings["sel_inst"], {}).get("vrp")
+        task_name = f"Single - {sidebar_settings['sel_inst']}"
         
-        st.success(f"Benchmark started in background! Task ID: `{task_id}`")
-        st.info("You can now close this page. The benchmark will continue running on the server.")
-        st.markdown("Your results will be saved to the server when complete.")
+        # Prepare settings
+        benchmark_settings = _prepare_single_benchmark_settings(sidebar_settings)
         
-        st.session_state.run_bulk = False
-        st.rerun()
-    else:
-        run_bulk_benchmark(bulk_settings)
+        # Run in background
+        run_background_task(
+            run_single_benchmark_background,
+            task_id,
+            task_name,
+            benchmark_settings,
+            instance_file,
+            sidebar_settings["bks_cost"]
+        )
+        
+        st.success(f"✅ Benchmark started! Task ID: `{task_id}`")
+        st.info("Switch to the **Monitor** tab to follow the progress.")
 
+    # --- Bulk Benchmark Execution ---
+    if st.session_state.run_bulk:
+        selected_instances = st.session_state.get('selected_bulk_instances', [])
+        
+        if selected_instances:
+            st.subheader("🚀 Starting Bulk Benchmark")
+            
+            # Prepare bulk settings
+            bulk_settings = _prepare_bulk_benchmark_settings(sidebar_settings)
+            
+            # Start in background
+            task_id = str(uuid4())[:8]
+            task_name = f"Bulk - {len(selected_instances)} instances"
+            run_background_task(
+                run_bulk_benchmark_background,
+                task_id,
+                task_name,
+                bulk_settings
+            )
+            
+            st.success(f"✅ Bulk benchmark started! Task ID: `{task_id}`")
+            st.info("📊 Switch to the **Monitor** tab to follow the progress.")
+            
+            st.session_state.run_bulk = False
+        else:
+            st.error("❌ No instances selected for bulk run.")
+            st.session_state.run_bulk = False
 
-# --- Display Results ---
-if st.session_state.results_df is not None:
-    display_results(
-        st.session_state.results_df,
-        sidebar_settings["p_map"],
-        sidebar_settings["sel_inst"],
-        sidebar_settings["bks_cost"],
-        sidebar_settings["time_limit"],
-        st.session_state.all_histories
-    )
+    # --- Display quick note ---
+    st.divider()
+    st.markdown("""
+    ### How to use:
+    1. Configure your benchmark settings using the sidebar
+    2. Click **Run** to start the benchmark
+    3. Switch to the **Monitor** tab to track progress
+    4. Results are automatically saved and can be downloaded
+    """)
+
+# --- MONITOR TAB ---
+with tab2:
+    st.session_state.active_tab = 'Monitor'
+    render_monitor_page()
 

@@ -7,6 +7,9 @@ import random
 import io
 import base64
 import os
+import copy
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import streamlit.components.v1 as components
 from benchmark_utils import execute_and_measure
@@ -214,14 +217,171 @@ def run_bulk_benchmark(settings):
         )
     else:
         st.warning("No results were generated. Check your configurations.")
+
+
+def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, path_map, task, 
+                                time_checkpoints, shared_state):
+    """
+    Process a single instance across all experiments.
+    Returns list of result rows for this instance.
+    shared_state: dict with 'lock', 'current_step', 'total_steps', 'results' keys
+    """
+    results = []
     
-    st.stop()
+    try:
+        inst_data = instance_data_parser.load_vrp_instance(p_info["vrp"])
+        task.log(f"Loaded instance: {inst_name}")
+        
+        # Extract features
+        meta_features = parse_gaetano_metadata(inst_name)
+        n_customers = inst_data.get('num_nodes', 0) - 1
+        n_vehicles = inst_data.get('num_vehicles', 0)
+        capacity = inst_data.get('capacity', 0)
+        
+        bks_val = None
+        if p_info["sol"]:
+            try:
+                bks_val = solution_parser.parse_solution_file(p_info["sol"])
+            except:
+                pass
+
+        for exp in bulk_experiments:
+            # Try with increasing number of vehicles (0 = original, 1-5 = +1 to +5)
+            for vehicle_attempt in range(6):
+                algo_costs = []
+                algo_times = []
+                checkpoint_collectors = {t: [] for t in time_checkpoints}
+                
+                # Prepare instance data with modified vehicle count
+                working_instance = inst_data.copy()
+                if vehicle_attempt > 0:
+                    working_instance = copy.deepcopy(inst_data)
+                    original_num = working_instance['num_vehicles']
+                    working_instance['num_vehicles'] = original_num + vehicle_attempt
+                    working_instance['vehicle_capacities'] = [working_instance['capacity']] * working_instance['num_vehicles']
+                    task.log(f"Retrying {inst_name} | {exp['name']} with {working_instance['num_vehicles']} vehicles (+{vehicle_attempt})")
+
+                for r in range(settings["reps"]):
+                    # Check for stop signal
+                    if task.should_stop():
+                        task.log(f"Stop signal received in {inst_name}, skipping", level="warning")
+                        return results
+                    
+                    with shared_state['lock']:
+                        shared_state['current_step'] += 1
+                        current_step = shared_state['current_step']
+                        total_steps = shared_state['total_steps']
+                    
+                    progress = current_step / total_steps * 100
+                    step_name = f"{inst_name} | {exp['name']} | Rep {r+1}/{settings['reps']}"
+                    if vehicle_attempt > 0:
+                        step_name += f" | Vehicles +{vehicle_attempt}"
+                    task.update_progress(current_step, total_steps, step_name)
+                    
+                    cur_kw = exp["kwargs"].copy()
+                    cur_kw["random_seed"] = random.randint(0, 2**31 - 1)
+                    
+                    res = execute_and_measure(exp["func"], working_instance, **cur_kw)
+                    
+                    if res["objective_value"] is not None:
+                        algo_costs.append(res["objective_value"])
+                        algo_times.append(res["cpu_time"])
+                        
+                        history = res.get("history", [])
+                        for t_chk in time_checkpoints:
+                            cost_at_t = get_cost_at_time(history, t_chk)
+                            if cost_at_t is not None:
+                                checkpoint_collectors[t_chk].append(cost_at_t)
+                
+                # If we found a solution, break out of vehicle retry loop
+                if algo_costs:
+                    avg_cost = statistics.mean(algo_costs)
+                    best_cost = min(algo_costs)
+                    avg_time = statistics.mean(algo_times)
+                    
+                    best_gap = ((best_cost - bks_val) / bks_val * 100) if bks_val else None
+                    avg_gap = ((avg_cost - bks_val) / bks_val * 100) if bks_val else None
+                    
+                    # Add info about which vehicle attempt succeeded
+                    algo_name = exp["name"]
+                    if vehicle_attempt > 0:
+                        algo_name += f" (+{vehicle_attempt}V)"
+                    
+                    row = {
+                        "Instance": inst_name,
+                        "Depot Layout": meta_features["Depot Layout"],
+                        "Cust Layout": meta_features["Customer Layout"],
+                        "Demand Type": meta_features["Demand Profile ID"],
+                        "Route Class": meta_features["Route Length Class"],
+                        "Climate": meta_features["Climate"],
+                        "Customers": n_customers,
+                        "Vehicles": n_vehicles,
+                        "Capacity": capacity,
+                        "First Solution": exp.get("fs_label"),
+                        "Metaheuristic": exp.get("mh_label"),
+                        "Repetitions": settings["reps"],
+                        "Avg Cost": avg_cost,
+                        "Best Cost": best_cost,
+                        "BKS Cost": bks_val,
+                        "Best Gap (%)": best_gap,
+                        "Avg Gap (%)": avg_gap,
+                        "Avg CPU Time (s)": avg_time
+                    }
+                    
+                    for t_chk in time_checkpoints:
+                        costs_at_t = checkpoint_collectors[t_chk]
+                        if costs_at_t:
+                            row[f"Avg Cost @ {t_chk}s"] = statistics.mean(costs_at_t)
+                            row[f"Best Cost @ {t_chk}s"] = min(costs_at_t)
+                        else:
+                            row[f"Avg Cost @ {t_chk}s"] = None
+                            row[f"Best Cost @ {t_chk}s"] = None
+                            
+                    results.append(row)
+                    task.log(f"Solution found for {inst_name} | {exp['name']} with {vehicle_attempt} additional vehicles")
+                    break  # Exit vehicle retry loop since we found a solution
+                
+                # If this is the last vehicle attempt and still no solution, record as failed
+                if vehicle_attempt == 5:
+                    row = {
+                        "Instance": inst_name,
+                        "Depot Layout": meta_features["Depot Layout"],
+                        "Cust Layout": meta_features["Customer Layout"],
+                        "Demand Type": meta_features["Demand Profile ID"],
+                        "Route Class": meta_features["Route Length Class"],
+                        "Climate": meta_features["Climate"],
+                        "Customers": n_customers,
+                        "Vehicles": n_vehicles,
+                        "Capacity": capacity,
+                        "First Solution": exp.get("fs_label"),
+                        "Metaheuristic": exp.get("mh_label"),
+                        "Repetitions": settings["reps"],
+                        "Avg Cost": "No Solution",
+                        "Best Cost": "No Solution",
+                        "BKS Cost": bks_val,
+                        "Best Gap (%)": None,
+                        "Avg Gap (%)": None,
+                        "Avg CPU Time (s)": statistics.mean(algo_times) if algo_times else None
+                    }
+                    
+                    for t_chk in time_checkpoints:
+                        row[f"Avg Cost @ {t_chk}s"] = None
+                        row[f"Best Cost @ {t_chk}s"] = None
+                    
+                    results.append(row)
+                    task.log(f"No solution found for {inst_name} | {exp['name']} even with +5 vehicles", level="warning")
+        
+        return results
+    except Exception as e:
+        task.log(f"Error processing {inst_name}: {str(e)}", level="error")
+        return results
 
 
 def run_bulk_benchmark_background(task, settings):
     """
     Run bulk benchmark execution as a background task.
     Updates task progress instead of using Streamlit UI.
+    Uses parallel processing for instances.
     """
     task.log(f"==================== BENCHMARK START ====================")
     task.log(f"Task ID: {task.task_id}")
@@ -273,102 +433,66 @@ def run_bulk_benchmark_background(task, settings):
     current_step = 0
     time_checkpoints = [5, 10, 15, 20, 30, 60]
     
+    # Get number of parallel workers from settings
+    num_parallel = settings.get('num_parallel_instances', 2)
+    task.log(f"Using {num_parallel} parallel workers for instance processing")
+    
     # Run loop
     task.log(f"Total experiments: {len(bulk_experiments)}")
     task.log(f"Total steps: {total_steps} ({len(target_instances)} instances × {len(bulk_experiments)} algorithms × {settings['reps']} reps)")
     task.log(f"================== EXECUTION START ====================")
-
-
+    
+    # Prepare shared state for thread-safe progress tracking
+    shared_state = {
+        'lock': threading.Lock(),
+        'current_step': 0,
+        'total_steps': total_steps,
+        'results': []
+    }
+    
+    # Filter valid instances and prepare tasks
+    valid_instances = []
     for inst_name in target_instances:
         if inst_name not in path_map:
             task.log(f"Skipping {inst_name}: not found in path map")
             continue
-
-        p_info = path_map[inst_name]
-        try:
-            inst_data = instance_data_parser.load_vrp_instance(p_info["vrp"])
-            task.log(f"Loaded instance: {inst_name}")
-        except Exception as e:
-            task.log(f"Error loading {inst_name}: {e}", level="error")
-            continue
-
-        # Extract features
-        meta_features = parse_gaetano_metadata(inst_name)
-        n_customers = inst_data.get('num_nodes', 0) - 1
-        n_vehicles = inst_data.get('num_vehicles', 0)
-        capacity = inst_data.get('capacity', 0)
-        
-        bks_val = None
-        if p_info["sol"]:
-            try:
-                bks_val = solution_parser.parse_solution_file(p_info["sol"])
-            except:
-                pass
-
-        for exp in bulk_experiments:
-            algo_costs = []
-            algo_times = []
-            checkpoint_collectors = {t: [] for t in time_checkpoints}
-
-            for r in range(settings["reps"]):
-                current_step += 1
-                progress = current_step / total_steps * 100
-                step_name = f"{inst_name} | {exp['name']} | Rep {r+1}/{settings['reps']}"
-                task.update_progress(current_step, total_steps, step_name)
-                cur_kw = exp["kwargs"].copy()
-                cur_kw["random_seed"] = random.randint(0, 2**31 - 1)
-                
-                res = execute_and_measure(exp["func"], inst_data, **cur_kw)
-                
-                if res["objective_value"] is not None:
-                    algo_costs.append(res["objective_value"])
-                    algo_times.append(res["cpu_time"])
-                    
-                    history = res.get("history", [])
-                    for t_chk in time_checkpoints:
-                        cost_at_t = get_cost_at_time(history, t_chk)
-                        if cost_at_t is not None:
-                            checkpoint_collectors[t_chk].append(cost_at_t)
+        valid_instances.append((inst_name, path_map[inst_name]))
+    
+    # Run instances in parallel
+    with ThreadPoolExecutor(max_workers=num_parallel) as executor:
+        # Submit all instance processing tasks
+        futures = []
+        for inst_name, p_info in valid_instances:
+            # Check for stop signal before submitting
+            if task.should_stop():
+                task.log("Stop signal received, halting execution...", level="error")
+                task.set_completed(error="Benchmark stopped by user")
+                return
             
-            if algo_costs:
-                avg_cost = statistics.mean(algo_costs)
-                best_cost = min(algo_costs)
-                avg_time = statistics.mean(algo_times)
-                
-                best_gap = ((best_cost - bks_val) / bks_val * 100) if bks_val else None
-                avg_gap = ((avg_cost - bks_val) / bks_val * 100) if bks_val else None
-                
-                row = {
-                    "Instance": inst_name,
-                    "Depot Layout": meta_features["Depot Layout"],
-                    "Cust Layout": meta_features["Customer Layout"],
-                    "Demand Type": meta_features["Demand Profile ID"],
-                    "Route Class": meta_features["Route Length Class"],
-                    "Climate": meta_features["Climate"],
-                    "Customers": n_customers,
-                    "Vehicles": n_vehicles,
-                    "Capacity": capacity,
-                    "First Solution": exp.get("fs_label"),
-                    "Metaheuristic": exp.get("mh_label"),
-                    "Repetitions": settings["reps"],
-                    "Avg Cost": avg_cost,
-                    "Best Cost": best_cost,
-                    "BKS Cost": bks_val,
-                    "Best Gap (%)": best_gap,
-                    "Avg Gap (%)": avg_gap,
-                    "Avg CPU Time (s)": avg_time
-                }
-                
-                for t_chk in time_checkpoints:
-                    costs_at_t = checkpoint_collectors[t_chk]
-                    if costs_at_t:
-                        row[f"Avg Cost @ {t_chk}s"] = statistics.mean(costs_at_t)
-                        row[f"Best Cost @ {t_chk}s"] = min(costs_at_t)
-                    else:
-                        row[f"Avg Cost @ {t_chk}s"] = None
-                        row[f"Best Cost @ {t_chk}s"] = None
-                        
-                bulk_results.append(row)
+            future = executor.submit(
+                _process_instance_benchmark,
+                inst_name, p_info, bulk_experiments, settings, path_map, task,
+                time_checkpoints, shared_state
+            )
+            futures.append(future)
+        
+        # Collect results as they complete
+        for future in as_completed(futures):
+            if task.should_stop():
+                task.log("Stop signal received, halting execution...", level="error")
+                # Cancel remaining futures
+                for f in futures:
+                    f.cancel()
+                task.set_completed(error="Benchmark stopped by user")
+                return
+            
+            try:
+                instance_results = future.result()
+                bulk_results.extend(instance_results)
+            except Exception as e:
+                task.log(f"Error in instance processing: {str(e)}", level="error")
+
+
 
     # Save results to Excel
     task.log(f"================== SAVING RESULTS ====================")
