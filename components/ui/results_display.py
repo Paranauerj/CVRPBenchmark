@@ -2,7 +2,7 @@
 
 import streamlit as st
 from components.utils import instance_data_parser
-from components.visualization.plotting import plot_routes, plot_convergence
+from components.ui.plotting import plot_routes, plot_convergence
 
 
 def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histories):

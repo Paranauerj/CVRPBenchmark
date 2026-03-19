@@ -1,16 +1,16 @@
 """CVRP Benchmarker - Main Application."""
 
 import streamlit as st
-import instance_data_parser
-import configurable_solver
+from components.utils import instance_data_parser
+from components.execution import configurable_solver
 from uuid import uuid4
 
 from components.ui.sidebar import render_sidebar, FIRST_SOLUTIONS, METAHEURISTICS
 from components.execution.single_benchmark import run_single_benchmark, run_single_benchmark_background
 from components.execution.bulk_benchmark import run_bulk_benchmark, run_bulk_benchmark_background
 from components.execution.background_task import run_background_task
-from components.visualization.results_display import display_results
-from components.visualization.monitoring import render_monitor_page
+from components.ui.results_display import display_results
+from components.ui.monitoring import render_monitor_page
 
 
 # --- Helper Functions ---

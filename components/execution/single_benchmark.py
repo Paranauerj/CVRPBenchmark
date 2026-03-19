@@ -7,7 +7,7 @@ import json
 import os
 import copy
 from datetime import datetime
-from benchmark_utils import execute_and_measure
+from components.utils.benchmark_utils import execute_and_measure
 
 
 def run_single_benchmark(instance_data, settings, bks_cost):
@@ -136,7 +136,7 @@ def run_single_benchmark_background(task, settings, instance_data_file, bks_cost
     Loads instance data from file since it can't be serialized easily.
     """
     import pandas as pd
-    import instance_data_parser
+    from components.utils import instance_data_parser
     
     task.log(f"==================== SINGLE BENCHMARK START ====================")
     task.log(f"Task ID: {task.task_id}")

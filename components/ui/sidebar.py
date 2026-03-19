@@ -3,8 +3,8 @@
 import streamlit as st
 import os
 import glob
-import instance_data_parser
-import solution_parser
+from components.utils import instance_data_parser
+from components.utils import solution_parser
 from ortools.constraint_solver import routing_enums_pb2
 
 

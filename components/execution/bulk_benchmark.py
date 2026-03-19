@@ -12,12 +12,12 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import streamlit.components.v1 as components
-from benchmark_utils import execute_and_measure
+from components.utils.benchmark_utils import execute_and_measure
 from components.ui.sidebar import find_instance_files
 from components.utils.helpers import get_cost_at_time, parse_gaetano_metadata
 from components.execution.background_task import run_background_task, BackgroundTask
-import instance_data_parser
-import solution_parser
+from components.utils import instance_data_parser
+from components.utils import solution_parser
 
 
 def run_bulk_benchmark(settings):
