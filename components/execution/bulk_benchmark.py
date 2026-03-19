@@ -2,8 +2,6 @@
 
 import streamlit as st
 import pandas as pd
-import statistics
-import random
 import io
 import base64
 import os
@@ -12,12 +10,14 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 import streamlit.components.v1 as components
-from components.utils.benchmark_utils import execute_and_measure
+from components.execution.benchmark_common import (
+    prepare_experiments, extract_instance_metadata, build_result_row, 
+    run_experiment_reps, TIME_CHECKPOINTS
+)
 from components.ui.sidebar import find_instance_files
-from components.utils.helpers import get_cost_at_time, parse_gaetano_metadata
-from components.execution.background_task import run_background_task, BackgroundTask
 from components.utils import instance_data_parser
 from components.utils import solution_parser
+from components.execution.background_task import run_background_task, BackgroundTask
 
 
 def run_bulk_benchmark(settings):
@@ -36,29 +36,7 @@ def run_bulk_benchmark(settings):
         st.stop()
 
     # Prepare experiments
-    bulk_experiments = []
-    for fs in settings["sel_fs"]:
-        for mh in settings["sel_mh"]:
-            fs_label = fs.split('(')[0].strip()
-            mh_label = mh.split('(')[0].strip()
-            algo_name = f"{mh_label} [{fs_label}]"
-            kw = {
-                "first_solution_strategy": settings["fs_enum"][fs],
-                "local_search_metaheuristic": settings["mh_enum"][mh],
-                "time_limit_seconds": settings["time_limit"],
-                "solution_limit": settings["sol_limit"],
-                "lns_time_limit_seconds": settings["lns_limit"],
-                "target_cost": None,  # Cannot use gap target in bulk
-                "no_improvement_limit": settings["no_improv"],
-                "no_improvement_iterations_limit": settings["no_improv_iter"]
-            }
-            bulk_experiments.append({
-                "name": algo_name,
-                "func": settings["solver_func"],
-                "kwargs": kw,
-                "fs_label": fs_label,
-                "mh_label": mh_label
-            })
+    bulk_experiments = prepare_experiments(settings)
 
     if not bulk_experiments:
         st.error("Please select at least one algorithm in the sidebar.")
@@ -72,7 +50,6 @@ def run_bulk_benchmark(settings):
     
     total_steps = len(target_instances) * len(bulk_experiments) * settings["reps"]
     current_step = 0
-    time_checkpoints = [5, 10, 15, 20, 30, 60]
 
     for inst_name in target_instances:
         if inst_name not in path_map:
@@ -87,10 +64,7 @@ def run_bulk_benchmark(settings):
             continue
 
         # Extract features (richer metadata from filename)
-        meta_features = parse_gaetano_metadata(inst_name)
-        n_customers = inst_data.get('num_nodes', 0) - 1
-        n_vehicles = inst_data.get('num_vehicles', 0)
-        capacity = inst_data.get('capacity', 0)
+        instance_meta = extract_instance_metadata(inst_data, inst_name)
         
         bks_val = None
         if p_info["sol"]:
@@ -100,69 +74,18 @@ def run_bulk_benchmark(settings):
                 pass
 
         for exp in bulk_experiments:
-            algo_costs = []
-            algo_times = []
-            checkpoint_collectors = {t: [] for t in time_checkpoints}
-
-            for r in range(settings["reps"]):
+            def progress_callback(rep, reps):
+                nonlocal current_step
                 current_step += 1
                 progress_bar.progress(min(current_step / total_steps, 1.0))
-                status_text.text(f"Processing: {inst_name} | {exp['name']} | Rep {r+1}/{settings['reps']}")
-                
-                cur_kw = exp["kwargs"].copy()
-                cur_kw["random_seed"] = random.randint(0, 2**31 - 1)
-                
-                res = execute_and_measure(exp["func"], inst_data, **cur_kw)
-                
-                if res["objective_value"] is not None:
-                    algo_costs.append(res["objective_value"])
-                    algo_times.append(res["cpu_time"])
-                    
-                    history = res.get("history", [])
-                    for t_chk in time_checkpoints:
-                        cost_at_t = get_cost_at_time(history, t_chk)
-                        if cost_at_t is not None:
-                            checkpoint_collectors[t_chk].append(cost_at_t)
+                status_text.text(f"Processing: {inst_name} | {exp['name']} | Rep {rep+1}/{reps}")
             
-            if algo_costs:
-                avg_cost = statistics.mean(algo_costs)
-                best_cost = min(algo_costs)
-                avg_time = statistics.mean(algo_times)
-                
-                best_gap = ((best_cost - bks_val) / bks_val * 100) if bks_val else None
-                avg_gap = ((avg_cost - bks_val) / bks_val * 100) if bks_val else None
-                
-                row = {
-                    "Instance": inst_name,
-                    "Depot Layout": meta_features["Depot Layout"],
-                    "Cust Layout": meta_features["Customer Layout"],
-                    "Demand Type": meta_features["Demand Profile ID"],
-                    "Route Class": meta_features["Route Length Class"],
-                    "Climate": meta_features["Climate"],
-                    "Customers": n_customers,
-                    "Vehicles": n_vehicles,
-                    "Capacity": capacity,
-                    "First Solution": exp.get("fs_label"),
-                    "Metaheuristic": exp.get("mh_label"),
-                    "Repetitions": settings["reps"],
-                    "Avg Cost": avg_cost,
-                    "Best Cost": best_cost,
-                    "BKS Cost": bks_val,
-                    "Best Gap (%)": best_gap,
-                    "Avg Gap (%)": avg_gap,
-                    "Avg CPU Time (s)": avg_time
-                }
-                
-                for t_chk in time_checkpoints:
-                    costs_at_t = checkpoint_collectors[t_chk]
-                    if costs_at_t:
-                        row[f"Avg Cost @ {t_chk}s"] = statistics.mean(costs_at_t)
-                        row[f"Best Cost @ {t_chk}s"] = min(costs_at_t)
-                    else:
-                        row[f"Avg Cost @ {t_chk}s"] = None
-                        row[f"Best Cost @ {t_chk}s"] = None
-                        
-                bulk_results.append(row)
+            data = run_experiment_reps(exp, inst_data, exp["reps"], progress_callback)
+            
+            if data["costs"]:
+                result_row = build_result_row(exp, instance_meta, data["costs"], data["times"],
+                                             data["iters_list"], data["best_routes"], bks_val, data["checkpoints"])
+                bulk_results.append(result_row)
 
     st.success("Bulk Benchmark Complete!")
     st.session_state.run_bulk = False
@@ -219,24 +142,21 @@ def run_bulk_benchmark(settings):
         st.warning("No results were generated. Check your configurations.")
 
 
-def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, path_map, task, 
-                                time_checkpoints, shared_state):
+def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, path_map, task, shared_state):
     """
     Process a single instance across all experiments.
     Returns list of result rows for this instance.
     shared_state: dict with 'lock', 'current_step', 'total_steps', 'results' keys
     """
     results = []
+    task.log(f"Starting processing for instance: {inst_name}")
     
     try:
         inst_data = instance_data_parser.load_vrp_instance(p_info["vrp"])
         task.log(f"Loaded instance: {inst_name}")
         
         # Extract features
-        meta_features = parse_gaetano_metadata(inst_name)
-        n_customers = inst_data.get('num_nodes', 0) - 1
-        n_vehicles = inst_data.get('num_vehicles', 0)
-        capacity = inst_data.get('capacity', 0)
+        instance_meta = extract_instance_metadata(inst_data, inst_name)
         
         bks_val = None
         if p_info["sol"]:
@@ -248,10 +168,6 @@ def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, p
         for exp in bulk_experiments:
             # Try with increasing number of vehicles (0 = original, 1-5 = +1 to +5)
             for vehicle_attempt in range(6):
-                algo_costs = []
-                algo_times = []
-                checkpoint_collectors = {t: [] for t in time_checkpoints}
-                
                 # Prepare instance data with modified vehicle count
                 working_instance = inst_data.copy()
                 if vehicle_attempt > 0:
@@ -261,115 +177,50 @@ def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, p
                     working_instance['vehicle_capacities'] = [working_instance['capacity']] * working_instance['num_vehicles']
                     task.log(f"Retrying {inst_name} | {exp['name']} with {working_instance['num_vehicles']} vehicles (+{vehicle_attempt})")
 
-                for r in range(settings["reps"]):
+                # Custom progress callback for background task
+                # Only count progress on first vehicle attempt to avoid exceeding 100%
+                def bg_progress_callback(rep, reps):
                     # Check for stop signal
                     if task.should_stop():
                         task.log(f"Stop signal received in {inst_name}, skipping", level="warning")
-                        return results
+                        raise InterruptedError("Benchmark stopped by user")
                     
-                    with shared_state['lock']:
-                        shared_state['current_step'] += 1
-                        current_step = shared_state['current_step']
-                        total_steps = shared_state['total_steps']
+                    # Only increment counter on first rep of first vehicle attempt
+                    if vehicle_attempt == 0 and rep == 0:
+                        with shared_state['lock']:
+                            shared_state['current_step'] += 1
+                            current_step = shared_state['current_step']
+                            total_steps = shared_state['total_steps']
+                    else:
+                        with shared_state['lock']:
+                            current_step = shared_state['current_step']
+                            total_steps = shared_state['total_steps']
                     
-                    progress = current_step / total_steps * 100
-                    step_name = f"{inst_name} | {exp['name']} | Rep {r+1}/{settings['reps']}"
+                    step_name = f"{inst_name} | {exp['name']} | Rep {rep+1}/{reps}"
                     if vehicle_attempt > 0:
                         step_name += f" | Vehicles +{vehicle_attempt}"
                     task.update_progress(current_step, total_steps, step_name)
-                    
-                    cur_kw = exp["kwargs"].copy()
-                    cur_kw["random_seed"] = random.randint(0, 2**31 - 1)
-                    
-                    res = execute_and_measure(exp["func"], working_instance, **cur_kw)
-                    
-                    if res["objective_value"] is not None:
-                        algo_costs.append(res["objective_value"])
-                        algo_times.append(res["cpu_time"])
-                        
-                        history = res.get("history", [])
-                        for t_chk in time_checkpoints:
-                            cost_at_t = get_cost_at_time(history, t_chk)
-                            if cost_at_t is not None:
-                                checkpoint_collectors[t_chk].append(cost_at_t)
                 
-                # If we found a solution, break out of vehicle retry loop
-                if algo_costs:
-                    avg_cost = statistics.mean(algo_costs)
-                    best_cost = min(algo_costs)
-                    avg_time = statistics.mean(algo_times)
+                try:
+                    data = run_experiment_reps(exp, working_instance, exp["reps"], bg_progress_callback)
                     
-                    best_gap = ((best_cost - bks_val) / bks_val * 100) if bks_val else None
-                    avg_gap = ((avg_cost - bks_val) / bks_val * 100) if bks_val else None
+                    # If we found a solution, break out of vehicle retry loop
+                    if data["costs"]:
+                        result_row = build_result_row(exp, instance_meta, data["costs"], data["times"],
+                                                      data["iters_list"], data["best_routes"], bks_val, data["checkpoints"])
+                        results.append(result_row)
+                        task.log(f"✓ Solution found for {inst_name} | {exp['name']} with {vehicle_attempt} additional vehicles. Cost: {min(data['costs']):.2f}")
+                        break  # Exit vehicle retry loop since we found a solution
                     
-                    # Add info about which vehicle attempt succeeded
-                    algo_name = exp["name"]
-                    if vehicle_attempt > 0:
-                        algo_name += f" (+{vehicle_attempt}V)"
-                    
-                    row = {
-                        "Instance": inst_name,
-                        "Depot Layout": meta_features["Depot Layout"],
-                        "Cust Layout": meta_features["Customer Layout"],
-                        "Demand Type": meta_features["Demand Profile ID"],
-                        "Route Class": meta_features["Route Length Class"],
-                        "Climate": meta_features["Climate"],
-                        "Customers": n_customers,
-                        "Vehicles": n_vehicles,
-                        "Capacity": capacity,
-                        "First Solution": exp.get("fs_label"),
-                        "Metaheuristic": exp.get("mh_label"),
-                        "Repetitions": settings["reps"],
-                        "Avg Cost": avg_cost,
-                        "Best Cost": best_cost,
-                        "BKS Cost": bks_val,
-                        "Best Gap (%)": best_gap,
-                        "Avg Gap (%)": avg_gap,
-                        "Avg CPU Time (s)": avg_time
-                    }
-                    
-                    for t_chk in time_checkpoints:
-                        costs_at_t = checkpoint_collectors[t_chk]
-                        if costs_at_t:
-                            row[f"Avg Cost @ {t_chk}s"] = statistics.mean(costs_at_t)
-                            row[f"Best Cost @ {t_chk}s"] = min(costs_at_t)
-                        else:
-                            row[f"Avg Cost @ {t_chk}s"] = None
-                            row[f"Best Cost @ {t_chk}s"] = None
-                            
-                    results.append(row)
-                    task.log(f"Solution found for {inst_name} | {exp['name']} with {vehicle_attempt} additional vehicles")
-                    break  # Exit vehicle retry loop since we found a solution
+                    # If this is the last vehicle attempt and still no solution, record as failed
+                    if vehicle_attempt == 5:
+                        result_row = build_result_row(exp, instance_meta, [], data["times"],
+                                                      data["iters_list"], None, bks_val, data["checkpoints"])
+                        results.append(result_row)
+                        task.log(f"✗ No solution found for {inst_name} | {exp['name']} even with +5 vehicles", level="warning")
                 
-                # If this is the last vehicle attempt and still no solution, record as failed
-                if vehicle_attempt == 5:
-                    row = {
-                        "Instance": inst_name,
-                        "Depot Layout": meta_features["Depot Layout"],
-                        "Cust Layout": meta_features["Customer Layout"],
-                        "Demand Type": meta_features["Demand Profile ID"],
-                        "Route Class": meta_features["Route Length Class"],
-                        "Climate": meta_features["Climate"],
-                        "Customers": n_customers,
-                        "Vehicles": n_vehicles,
-                        "Capacity": capacity,
-                        "First Solution": exp.get("fs_label"),
-                        "Metaheuristic": exp.get("mh_label"),
-                        "Repetitions": settings["reps"],
-                        "Avg Cost": "No Solution",
-                        "Best Cost": "No Solution",
-                        "BKS Cost": bks_val,
-                        "Best Gap (%)": None,
-                        "Avg Gap (%)": None,
-                        "Avg CPU Time (s)": statistics.mean(algo_times) if algo_times else None
-                    }
-                    
-                    for t_chk in time_checkpoints:
-                        row[f"Avg Cost @ {t_chk}s"] = None
-                        row[f"Best Cost @ {t_chk}s"] = None
-                    
-                    results.append(row)
-                    task.log(f"No solution found for {inst_name} | {exp['name']} even with +5 vehicles", level="warning")
+                except InterruptedError:
+                    return results
         
         return results
     except Exception as e:
@@ -398,31 +249,8 @@ def run_bulk_benchmark_background(task, settings):
         return
 
     # Prepare experiments
-    bulk_experiments = []
-    task.log(f"Preparing experiments...")
-    for fs in settings["sel_fs"]:
-        for mh in settings["sel_mh"]:
-            fs_label = fs.split('(')[0].strip()
-            mh_label = mh.split('(')[0].strip()
-            algo_name = f"{mh_label} [{fs_label}]"
-            kw = {
-                "first_solution_strategy": settings["fs_enum"][fs],
-                "local_search_metaheuristic": settings["mh_enum"][mh],
-                "time_limit_seconds": settings["time_limit"],
-                "solution_limit": settings["sol_limit"],
-                "lns_time_limit_seconds": settings["lns_limit"],
-                "target_cost": None,  # Cannot use gap target in bulk
-                "no_improvement_limit": settings["no_improv"],
-                "no_improvement_iterations_limit": settings["no_improv_iter"]
-            }
-            bulk_experiments.append({
-                "name": algo_name,
-                "func": settings["solver_func"],
-                "kwargs": kw,
-                "fs_label": fs_label,
-                "mh_label": mh_label
-            })
-
+    bulk_experiments = prepare_experiments(settings)
+    
     if not bulk_experiments:
         task.set_completed(error="Please select at least one algorithm in the sidebar.")
         return
@@ -431,7 +259,6 @@ def run_bulk_benchmark_background(task, settings):
     bulk_results = []
     total_steps = len(target_instances) * len(bulk_experiments) * settings["reps"]
     current_step = 0
-    time_checkpoints = [5, 10, 15, 20, 30, 60]
     
     # Get number of parallel workers from settings
     num_parallel = settings.get('num_parallel_instances', 2)
@@ -471,8 +298,7 @@ def run_bulk_benchmark_background(task, settings):
             
             future = executor.submit(
                 _process_instance_benchmark,
-                inst_name, p_info, bulk_experiments, settings, path_map, task,
-                time_checkpoints, shared_state
+                inst_name, p_info, bulk_experiments, settings, path_map, task, shared_state
             )
             futures.append(future)
         
@@ -488,7 +314,9 @@ def run_bulk_benchmark_background(task, settings):
             
             try:
                 instance_results = future.result()
+                task.log(f"Received {len(instance_results)} results from instance")
                 bulk_results.extend(instance_results)
+                task.log(f"Total results collected so far: {len(bulk_results)}")
             except Exception as e:
                 task.log(f"Error in instance processing: {str(e)}", level="error")
 

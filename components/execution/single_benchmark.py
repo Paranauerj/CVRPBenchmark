@@ -7,37 +7,23 @@ import json
 import os
 import copy
 from datetime import datetime
-from components.utils.benchmark_utils import execute_and_measure
+from components.execution.benchmark_common import (
+    prepare_experiments, extract_instance_metadata, build_result_row, 
+    run_experiment_reps, TIME_CHECKPOINTS
+)
+from components.utils import instance_data_parser
 
 
-def run_single_benchmark(instance_data, settings, bks_cost):
+def run_single_benchmark(instance_data, settings, bks_cost, instance_name="Unknown"):
     """
     Run a single instance benchmark with the given settings.
     Returns a DataFrame with results.
     """
     import pandas as pd
     
-    experiments = []
-    for fs in settings["sel_fs"]:
-        for mh in settings["sel_mh"]:
-            algo = f"{mh.split('(')[0].strip()} [{fs.split('(')[0].strip()}]"
-            kw = {
-                "first_solution_strategy": settings["fs_enum"][fs],
-                "local_search_metaheuristic": settings["mh_enum"][mh],
-                "time_limit_seconds": settings["time_limit"],
-                "solution_limit": settings["sol_limit"],
-                "lns_time_limit_seconds": settings["lns_limit"],
-                "target_cost": settings["target_val"],
-                "no_improvement_limit": settings["no_improv"],
-                "no_improvement_iterations_limit": settings["no_improv_iter"]
-            }
-            experiments.append({
-                "name": algo,
-                "func": settings["solver_func"],
-                "kwargs": kw,
-                "reps": settings["reps"]
-            })
-
+    experiments = prepare_experiments(settings)
+    instance_meta = extract_instance_metadata(instance_data, instance_name)
+    
     results_list = []
     total = sum(e["reps"] for e in experiments)
     prog = st.progress(0.0)
@@ -46,84 +32,19 @@ def run_single_benchmark(instance_data, settings, bks_cost):
 
     for exp in experiments:
         stat.text(f"Running: {exp['name']}")
-        costs, times, iters_list, best_routes = [], [], [], None
-        best_cost_run = float('inf')
-        exp_histories = []
-
-        for _ in range(exp["reps"]):
+        
+        def progress_callback(rep, reps):
+            nonlocal cnt
             cnt += 1
             prog.progress(cnt / total)
-            cur_kw = exp["kwargs"].copy()
-            cur_kw["random_seed"] = random.randint(0, 2**31 - 1)
-            
-            res = execute_and_measure(exp["func"], instance_data, **cur_kw)
-            
-            if res["cpu_time"] is not None:
-                times.append(res["cpu_time"])
-            if res["objective_value"] is not None:
-                costs.append(res["objective_value"])
-                if res["objective_value"] < best_cost_run:
-                    best_cost_run = res["objective_value"]
-                    best_routes = res["routes"]
-            if res["iterations"] is not None:
-                iters_list.append(res["iterations"])
-            
-            if res.get("history"):
-                exp_histories.append(res["history"])
         
-        st.session_state.all_histories[exp["name"]] = exp_histories
-
-        if costs:
-            best = min(costs)
-            avg = statistics.mean(costs)
-            vehicles_used = len(best_routes) if best_routes else None
-            row = {
-                "Algorithm": exp["name"],
-                "Best Cost": best,
-                "Avg Cost": avg,
-                "CPU Time (s)": statistics.mean(times) if times else None,
-                "Vehicles Used": vehicles_used,
-                "Accepted Neighbors": int(statistics.mean(iters_list)) if iters_list else None,
-                "Repetitions": exp["reps"],
-                "_routes": best_routes
-            }
-            if bks_cost:
-                row["Best Gap (%)"] = ((best - bks_cost) / bks_cost) * 100.0
-                row["Avg Gap (%)"] = ((avg - bks_cost) / bks_cost) * 100.0
-            results_list.append(row)
-        else:
-            row = {
-                "Algorithm": exp["name"],
-                "Best Cost": "No Solution",
-                "Avg Cost": "No Solution",
-                "CPU Time (s)": statistics.mean(times) if times else None,
-                "Vehicles Used": None,
-                "Accepted Neighbors": None,
-                "Repetitions": exp["reps"],
-                "_routes": None
-            }
-            if bks_cost:
-                row["Best Gap (%)"] = "N/A"
-                row["Avg Gap (%)"] = "N/A"
-            results_list.append(row)
+        data = run_experiment_reps(exp, instance_data, exp["reps"], progress_callback)
+        
+        result_row = build_result_row(exp, instance_meta, data["costs"], data["times"], 
+                                      data["iters_list"], data["best_routes"], bks_cost, data["checkpoints"])
+        results_list.append(result_row)
 
     df = pd.DataFrame(results_list)
-    
-    # Calculate best run solution gap
-    global_best_cost = None
-    for row in results_list:
-        if isinstance(row["Best Cost"], (int, float)) and row["Best Cost"] < float('inf'):
-            if global_best_cost is None or row["Best Cost"] < global_best_cost:
-                global_best_cost = row["Best Cost"]
-    
-    if global_best_cost is not None:
-        for i, row in enumerate(results_list):
-            if isinstance(row["Best Cost"], (int, float)):
-                row["Best Run Gap (%)"] = ((row["Best Cost"] - global_best_cost) / global_best_cost) * 100.0
-            else:
-                row["Best Run Gap (%)"] = "N/A"
-        df = pd.DataFrame(results_list)
-    
     stat.empty()
     prog.empty()
     
@@ -142,127 +63,70 @@ def run_single_benchmark_background(task, settings, instance_data_file, bks_cost
     task.log(f"Task ID: {task.task_id}")
     
     try:
+        # Extract instance name from file path
+        instance_name = os.path.splitext(os.path.basename(instance_data_file))[0]
+        
         # Load instance data
         task.log(f"Loading instance: {instance_data_file}")
         instance_data = instance_data_parser.load_vrp_instance(instance_data_file)
         task.log(f"Instance loaded successfully")
         
-        # Prepare experiments
-        experiments = []
-        for fs in settings["sel_fs"]:
-            for mh in settings["sel_mh"]:
-                algo = f"{mh.split('(')[0].strip()} [{fs.split('(')[0].strip()}]"
-                kw = {
-                    "first_solution_strategy": settings["fs_enum"][fs],
-                    "local_search_metaheuristic": settings["mh_enum"][mh],
-                    "time_limit_seconds": settings["time_limit"],
-                    "solution_limit": settings["sol_limit"],
-                    "lns_time_limit_seconds": settings["lns_limit"],
-                    "target_cost": settings["target_val"],
-                    "no_improvement_limit": settings["no_improv"],
-                    "no_improvement_iterations_limit": settings["no_improv_iter"]
-                }
-                experiments.append({
-                    "name": algo,
-                    "func": settings["solver_func"],
-                    "kwargs": kw,
-                    "reps": settings["reps"]
-                })
+        # Prepare experiments and metadata
+        experiments = prepare_experiments(settings)
+        instance_meta = extract_instance_metadata(instance_data, instance_name)
         
         task.log(f"Prepared {len(experiments)} experiments")
         
         results_list = []
-        total = sum(e["reps"] for e in experiments) * 6  # Account for potential 6 vehicle attempts (0 to +5)
+        total = sum(e["reps"] for e in experiments) * 6  # Account for 6 vehicle attempts (0 to +5)
         current_step = 0
         
         for exp in experiments:
             # Try with increasing number of vehicles (0 = original, 1-5 = +1 to +5)
             for vehicle_attempt in range(6):
-                costs, times, iters_list, best_routes = [], [], [], None
-                best_cost_run = float('inf')
-                
                 # Prepare instance data with modified vehicle count
                 working_instance = instance_data.copy()
                 if vehicle_attempt > 0:
-                    # Make a deep copy for modification
                     working_instance = copy.deepcopy(instance_data)
                     original_num = working_instance['num_vehicles']
                     working_instance['num_vehicles'] = original_num + vehicle_attempt
                     working_instance['vehicle_capacities'] = [working_instance['capacity']] * working_instance['num_vehicles']
                     task.log(f"Retrying {exp['name']} with {working_instance['num_vehicles']} vehicles (+{vehicle_attempt})")
                 
-                for rep in range(exp["reps"]):
-                    # Check for stop signal
-                    if task.should_stop():
-                        task.log("Stop signal received, halting execution...", level="error")
-                        task.set_completed(error="Benchmark stopped by user")
-                        return
-                    
+                # Custom progress callback for background task
+                def bg_progress_callback(rep, reps):
+                    nonlocal current_step
                     current_step += 1
-                    step_name = f"{exp['name']} | Rep {rep+1}/{settings['reps']}"
+                    step_name = f"{exp['name']} | Rep {rep+1}/{reps}"
                     if vehicle_attempt > 0:
                         step_name += f" | Vehicles +{vehicle_attempt}"
                     task.update_progress(current_step, total, step_name)
                     
-                    cur_kw = exp["kwargs"].copy()
-                    cur_kw["random_seed"] = random.randint(0, 2**31 - 1)
-                    
-                    res = execute_and_measure(exp["func"], working_instance, **cur_kw)
-                    
-                    if res["cpu_time"] is not None:
-                        times.append(res["cpu_time"])
-                    if res["objective_value"] is not None:
-                        costs.append(res["objective_value"])
-                        if res["objective_value"] < best_cost_run:
-                            best_cost_run = res["objective_value"]
-                            best_routes = res["routes"]
-                    if res["iterations"] is not None:
-                        iters_list.append(res["iterations"])
+                    # Check for stop signal
+                    if task.should_stop():
+                        raise InterruptedError("Benchmark stopped by user")
                 
-                # If we found a solution, break out of vehicle retry loop
-                if costs:
-                    best = min(costs)
-                    avg = statistics.mean(costs)
-                    vehicles_used = len(best_routes) if best_routes else None
+                try:
+                    data = run_experiment_reps(exp, working_instance, exp["reps"], bg_progress_callback)
                     
-                    # Add info about which vehicle attempt succeeded
-                    algo_name = exp["name"]
-                    if vehicle_attempt > 0:
-                        algo_name += f" (+{vehicle_attempt}V)"
+                    # If we found a solution, break out of vehicle retry loop
+                    if data["costs"]:
+                        result_row = build_result_row(exp, instance_meta, data["costs"], data["times"],
+                                                      data["iters_list"], data["best_routes"], bks_cost, data["checkpoints"])
+                        results_list.append(result_row)
+                        task.log(f"Solution found for {exp['name']} with {vehicle_attempt} additional vehicles")
+                        break  # Exit vehicle retry loop since we found a solution
                     
-                    row = {
-                        "Algorithm": algo_name,
-                        "Best Cost": best,
-                        "Avg Cost": avg,
-                        "CPU Time (s)": statistics.mean(times) if times else None,
-                        "Vehicles Used": vehicles_used,
-                        "Accepted Neighbors": int(statistics.mean(iters_list)) if iters_list else None,
-                        "Repetitions": settings["reps"],
-                    }
-                    if bks_cost:
-                        row["Best Gap (%)"] = ((best - bks_cost) / bks_cost) * 100.0
-                        row["Avg Gap (%)"] = ((avg - bks_cost) / bks_cost) * 100.0
-                    results_list.append(row)
-                    task.log(f"Solution found for {exp['name']} with {vehicle_attempt} additional vehicles")
-                    break  # Exit vehicle retry loop since we found a solution
+                    # If last attempt with no solution yet
+                    if vehicle_attempt == 5:
+                        result_row = build_result_row(exp, instance_meta, [], data["times"],
+                                                      data["iters_list"], None, bks_cost, data["checkpoints"])
+                        results_list.append(result_row)
+                        task.log(f"No solution found for {exp['name']} even with +5 vehicles", level="warning")
                 
-                # If this is the last vehicle attempt and still no solution, record as failed
-                if vehicle_attempt == 5:
-                    row = {
-                        "Algorithm": exp["name"],
-                        "Best Cost": "No Solution",
-                        "Avg Cost": "No Solution",
-                        "CPU Time (s)": statistics.mean(times) if times else None,
-                        "Vehicles Used": None,
-                        "Accepted Neighbors": None,
-                        "Repetitions": settings["reps"],
-                    }
-                    if bks_cost:
-                        row["Best Gap (%)"] = None
-                        row["Avg Gap (%)"] = None
-                    results_list.append(row)
-                    task.log(f"No solution found for {exp['name']} even with +5 vehicles", level="warning")
-        
+                except InterruptedError:
+                    task.set_completed(error="Benchmark stopped by user")
+                    return
         
         # Save results
         task.log(f"Saving {len(results_list)} results")
