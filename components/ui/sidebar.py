@@ -1,14 +1,12 @@
-"""Sidebar configuration and UI components."""
+"""Simplified sidebar with only shared algorithm and limit parameters."""
 
 import streamlit as st
 import os
 import glob
-from components.utils import instance_data_parser
-from components.utils import solution_parser
 from ortools.constraint_solver import routing_enums_pb2
 
 
-# Constants
+# Algorithm Constants
 # Some first solutions need to pass a callback (like Sweep) - only available in C++
 # https://github.com/google/or-tools/issues/2004#issuecomment-623913505
 # https://github.com/google/or-tools/issues/3593#issuecomment-1347828378
@@ -55,174 +53,79 @@ def find_instance_files(directory="instances"):
     return valid_names, path_map
 
 
-def get_instance_sources():
-    """Get list of available instance sources (subdirectories in instances/)"""
-    instances_dir = "instances"
-    sources = []
-    if os.path.exists(instances_dir):
-        for item in sorted(os.listdir(instances_dir)):
-            path = os.path.join(instances_dir, item)
-            if os.path.isdir(path):
-                sources.append(item)
-    return sources
-
-
-def render_sidebar():
-    """Render the main configuration sidebar and return all settings."""
+def render_shared_sidebar():
+    """Render only the shared algorithm and limit parameters in sidebar."""
     with st.sidebar:
-        st.header("Configuration")
-        
-        # Select instance source
-        sources = get_instance_sources()
-        if sources:
-            sel_source = st.selectbox("Instance Source:", options=sources)
-            source_dir = os.path.join("instances", sel_source)
-        else:
-            st.error("No instance sources found. Please ensure instances/uchoa or instances/gaetano exist.")
-            sel_source = None
-            source_dir = "instances"
-        
-        names, p_map = find_instance_files(source_dir) if sel_source else ([], {})
-        
-        if names:
-            sel_inst = st.selectbox("Instance:", options=names)
-        else:
-            st.warning(f"No instances found in '{sel_source}' folder.")
-            sel_inst = None
-        
-        # Load BKS and instance info
-        bks_cost = None
-        min_vehicles = None
-        num_nodes = None
-        if sel_inst and sel_inst in p_map:
-            try:
-                if p_map[sel_inst]["sol"]:
-                    bks_cost = solution_parser.parse_solution_file(p_map[sel_inst]["sol"])
-            except:
-                bks_cost = None
-            try:
-                temp_instance = instance_data_parser.load_vrp_instance(p_map[sel_inst]["vrp"])
-                min_vehicles = temp_instance.get("min_vehicles", 1)
-                num_nodes = temp_instance.get("num_nodes", 0)
-            except:
-                min_vehicles = 1
-                num_nodes = 0
-        
-        # Display info
-        if num_nodes is not None:
-            st.write(f"**Nodes to Visit:** {num_nodes}")
-        
-        # Vehicle selector
-        num_vehicles = None
-        if min_vehicles is not None:
-            num_vehicles = st.number_input(
-                "Number of Vehicles",
-                min_value=min_vehicles,
-                value=min_vehicles,
-                step=1,
-                help=f"Minimum required: {min_vehicles}"
-            )
+        st.header("⚙️ Algorithm Settings")
         
         # Algorithm selection
         st.subheader("Algorithms")
-        sel_fs = st.multiselect("First Solution", list(FIRST_SOLUTIONS.keys()), ["Parallel Cheapest Insertion"])
-        sel_mh = st.multiselect("Metaheuristics", list(METAHEURISTICS.keys()), ["Guided Local Search (GLS)"])
+        sel_fs = st.multiselect(
+            "First Solution Strategy", 
+            list(FIRST_SOLUTIONS.keys()), 
+            ["Parallel Cheapest Insertion"],
+            help="Initial solution method"
+        )
+        sel_mh = st.multiselect(
+            "Metaheuristic", 
+            list(METAHEURISTICS.keys()), 
+            ["Guided Local Search (GLS)"],
+            help="Local search improvement method"
+        )
         
         # Limits
-        st.subheader("Limits")
-        reps = st.number_input("Repetitions", 1, 20, 3)
-        time_limit = st.number_input("Time (s)", 1, 3600, 5) if st.checkbox("Time Limit", True) else None
-        sol_limit = st.number_input("Count", 1, 100000, 2000) if st.checkbox("Solution Limit", False) else None
-        lns_limit = st.number_input("LNS (s)", 1, 100, 1) if st.checkbox("LNS Limit", False) else None
+        st.subheader("Execution Limits")
+        time_limit = st.number_input(
+            "Time Limit (seconds)", 
+            min_value=1, 
+            max_value=3600, 
+            value=20,
+            help="Maximum execution time per run"
+        ) if st.checkbox("Enable Time Limit", value=True) else None
         
-        # Gap option
-        if bks_cost is not None:
-            target_gap = st.number_input("Gap %", 0.0, 100.0, 1.0) if st.checkbox("Stop at Gap", False) else None
-        else:
-            target_gap = None
-            if sel_inst:
-                st.warning("Best Known Solution not available. Gap comparison disabled.")
+        sol_limit = st.number_input(
+            "Solution Limit", 
+            min_value=1, 
+            max_value=100000, 
+            value=2000,
+            help="Stop after finding N solutions"
+        ) if st.checkbox("Enable Solution Limit", value=False) else None
         
-        # No improvement options
-        no_improv = st.number_input("No Improv (s)", 1, 300, 5) if st.checkbox("Stop No Improv (s)", False) else None
-        no_improv_iter = st.number_input("No Improv Accepted Neighbors", 20, 10000, 100) if st.checkbox("Stop No Improv (Accepted Neighbors)", False) else None
+        lns_limit = st.number_input(
+            "LNS Time Limit (seconds)", 
+            min_value=1, 
+            max_value=100, 
+            value=1,
+            help="Time limit for Large Neighborhood Search"
+        ) if st.checkbox("Enable LNS Limit", value=False) else None
         
-        # Bulk Operations
-        render_bulk_operations()
+        # Stopping conditions
+        st.subheader("Stopping Conditions")
+        
+        no_improv = st.number_input(
+            "No Improvement Timeout (seconds)", 
+            min_value=1, 
+            max_value=300, 
+            value=60,
+            help="Stop if no improvement for N seconds"
+        ) if st.checkbox("Stop on No Improvement (Time)", value=False) else None
+        
+        no_improv_iter = st.number_input(
+            "No Improvement Accepted Neighbors", 
+            min_value=20, 
+            max_value=10000, 
+            value=100,
+            help="Stop if no improvement for N accepted neighbors"
+        ) if st.checkbox("Stop on No Improvement (Neighbors)", value=False) else None
     
     return {
-        "sel_source": sel_source,
-        "sel_inst": sel_inst,
-        "p_map": p_map,
-        "bks_cost": bks_cost,
-        "num_vehicles": num_vehicles,
         "sel_fs": sel_fs,
         "sel_mh": sel_mh,
-        "reps": reps,
+        "fs_enum": FIRST_SOLUTIONS,
+        "mh_enum": METAHEURISTICS,
         "time_limit": time_limit,
         "sol_limit": sol_limit,
         "lns_limit": lns_limit,
-        "target_gap": target_gap,
         "no_improv": no_improv,
         "no_improv_iter": no_improv_iter,
-        "save_to_server": st.session_state.get('save_bulk_to_server', False)
     }
-
-
-def render_bulk_operations():
-    """Render the bulk operations UI."""
-    st.markdown("---")
-    st.subheader("Bulk Operations")
-
-    if st.button("Bulk Benchmark (Gaetano)", help="Configure and run on Gaetano instances"):
-        st.session_state.show_bulk_config = True
-
-    if st.session_state.show_bulk_config:
-        st.markdown("#### Select Instances")
-        gaetano_dir = os.path.join("instances", "gaetano")
-        
-        if os.path.exists(gaetano_dir):
-            g_names, _ = find_instance_files(gaetano_dir)
-            
-            if g_names:
-                selected = st.multiselect(
-                    "Choose instances to run:",
-                    options=g_names,
-                    default=g_names,
-                    help="Remove instances you want to skip."
-                )
-                
-                st.markdown("#### Options")
-                save_to_server = st.checkbox(
-                    "Run in Background (continue if page closes)",
-                    value=False,
-                    help="Run benchmark in the background. The benchmark will continue even if you close the page. Results will be saved to the server."
-                )
-                
-                num_parallel = st.slider(
-                    "Parallel Instances",
-                    min_value=1,
-                    max_value=16,
-                    value=2,
-                    help="Number of instances to process in parallel. More parallel tasks use more CPU/memory but finish faster."
-                )
-                
-                st.warning(f"You are about to run {len(selected)} instances with {num_parallel} parallel workers. This may take significant time.")
-                
-                col_run, col_cancel = st.columns(2)
-                
-                if col_run.button("Run Selected", type="primary"):
-                    st.session_state.selected_bulk_instances = selected
-                    st.session_state.save_bulk_to_server = save_to_server
-                    st.session_state.num_parallel_instances = num_parallel
-                    st.session_state.run_bulk = True
-                    st.session_state.show_bulk_config = False
-                    st.rerun()
-                    
-                if col_cancel.button("Cancel"):
-                    st.session_state.show_bulk_config = False
-                    st.rerun()
-            else:
-                st.error("No instances found in 'instances/gaetano'.")
-        else:
-            st.error(f"Folder not found: {gaetano_dir}")
