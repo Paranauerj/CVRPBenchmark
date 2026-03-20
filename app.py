@@ -20,6 +20,7 @@ def _init_session_state():
     defaults = {
         'results_df': None,
         'all_histories': {},
+        'all_best_routes': {},
         'active_tab': 'Single'
     }
     for key, value in defaults.items():
@@ -99,6 +100,7 @@ with tab_single:
     num_nodes = None
     num_vehicles = None
     target_gap = None
+    instance_data = None
     
     # Two-column layout for instance selection
     col1, col2 = st.columns(2)
@@ -238,9 +240,12 @@ with tab_single:
                 
                 benchmark_settings = _prepare_benchmark_settings(sidebar_settings, target_gap, reps)
                 
-                results_df = run_single_benchmark(instance_data, benchmark_settings, bks_cost, sel_inst)
+                results_df, all_histories, all_best_routes = run_single_benchmark(instance_data, benchmark_settings, bks_cost, sel_inst)
                 
                 st.session_state.results_df = results_df
+                st.session_state.all_histories = all_histories
+                st.session_state.all_best_routes = all_best_routes
+                st.session_state.instance_data = instance_data
                 st.success("✅ Benchmark completed!")
         else:
             # Run asynchronously (background)
@@ -266,8 +271,16 @@ with tab_single:
     st.divider()
     if st.session_state.results_df is not None and sel_inst is not None:
         st.subheader("📊 Results")
-        display_results(st.session_state.results_df, p_map, sel_inst, bks_cost, 
-                        sidebar_settings["time_limit"], st.session_state.get('all_histories', {}))
+        display_results(
+            st.session_state.results_df, 
+            p_map, 
+            sel_inst, 
+            bks_cost, 
+            sidebar_settings["time_limit"],
+            st.session_state.get('all_histories', {}),
+            st.session_state.get('instance_data'),
+            st.session_state.get('all_best_routes', {})
+        )
 
 
 # ============ BULK BENCHMARK TAB ============

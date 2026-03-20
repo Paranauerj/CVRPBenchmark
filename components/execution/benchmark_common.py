@@ -100,6 +100,7 @@ def run_experiment_reps(exp, instance_data, reps, progress_callback=None):
     """Run an experiment for given repetitions and return collected data."""
     costs, times, iters_list, best_routes = [], [], [], None
     checkpoint_collectors = {t: [] for t in TIME_CHECKPOINTS}
+    all_histories = []  # Store full convergence history from each run
     
     for rep in range(reps):
         if progress_callback:
@@ -121,6 +122,9 @@ def run_experiment_reps(exp, instance_data, reps, progress_callback=None):
         
         # Collect costs at time checkpoints
         if res.get("history"):
+            # Store full history for convergence visualization
+            all_histories.append(res["history"])
+            
             for t_chk in TIME_CHECKPOINTS:
                 cost_at_t = get_cost_at_time(res["history"], t_chk)
                 if cost_at_t is not None:
@@ -131,5 +135,6 @@ def run_experiment_reps(exp, instance_data, reps, progress_callback=None):
         "times": times,
         "iters_list": iters_list,
         "best_routes": best_routes,
-        "checkpoints": checkpoint_collectors
+        "checkpoints": checkpoint_collectors,
+        "all_histories": all_histories
     }

@@ -2,10 +2,10 @@
 
 import streamlit as st
 from components.utils import instance_data_parser
-from components.ui.plotting import plot_routes, plot_convergence
+from components.visualization.plotting import plot_routes, plot_convergence_comparison, plot_single_benchmark_results
 
 
-def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histories):
+def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histories, instance_data=None, all_best_routes=None):
     """Display benchmark results with tables, plots, and routes."""
     if results_df is None or results_df.empty:
         st.warning("No results to display.")
@@ -77,4 +77,22 @@ def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histo
         st.dataframe(checkpoint_display, width='stretch')
     else:
         st.info("No convergence data available.")
+    
+    # 3. Route and Convergence Visualization
+    st.divider()
+    if instance_data and all_histories:
+        # Get experiment names from results
+        exp_names = []
+        if "Metaheuristic" in df.columns and "First Solution" in df.columns:
+            for _, row in df.iterrows():
+                mh = row.get("Metaheuristic")
+                fs = row.get("First Solution")
+                if mh and fs:
+                    exp_names.append(f"{mh} [{fs}]")
+        
+        if exp_names and all_best_routes:
+            plot_single_benchmark_results(instance_data, all_histories, all_best_routes, exp_names)
+        else:
+            st.info("Route visualization requires both convergence history and best routes data.")
+
 

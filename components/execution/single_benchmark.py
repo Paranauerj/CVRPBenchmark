@@ -17,7 +17,7 @@ from components.utils import instance_data_parser
 def run_single_benchmark(instance_data, settings, bks_cost, instance_name="Unknown"):
     """
     Run a single instance benchmark with the given settings.
-    Returns a DataFrame with results.
+    Returns a tuple: (DataFrame with results, all_histories dict, all_best_routes dict)
     """
     import pandas as pd
     
@@ -25,6 +25,9 @@ def run_single_benchmark(instance_data, settings, bks_cost, instance_name="Unkno
     instance_meta = extract_instance_metadata(instance_data, instance_name)
     
     results_list = []
+    all_histories = {}  # exp_name -> history data
+    all_best_routes = {}  # exp_name -> best routes
+    
     total = sum(e["reps"] for e in experiments)
     prog = st.progress(0.0)
     cnt = 0
@@ -40,6 +43,10 @@ def run_single_benchmark(instance_data, settings, bks_cost, instance_name="Unkno
         
         data = run_experiment_reps(exp, instance_data, exp["reps"], progress_callback)
         
+        # Store histories and best routes for visualization
+        all_histories[exp['name']] = data["all_histories"]
+        all_best_routes[exp['name']] = data["best_routes"]
+        
         result_row = build_result_row(exp, instance_meta, data["costs"], data["times"], 
                                       data["iters_list"], data["best_routes"], bks_cost, data["checkpoints"])
         results_list.append(result_row)
@@ -48,7 +55,7 @@ def run_single_benchmark(instance_data, settings, bks_cost, instance_name="Unkno
     stat.empty()
     prog.empty()
     
-    return df
+    return df, all_histories, all_best_routes
 
 
 def run_single_benchmark_background(task, settings, instance_data_file, bks_cost):
