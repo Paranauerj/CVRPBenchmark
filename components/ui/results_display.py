@@ -73,7 +73,13 @@ def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histo
     checkpoint_cols = [col for col in df.columns if col.startswith("Best Cost @")]
     if checkpoint_cols:
         st.write("**Cost at Time Checkpoints:**")
-        checkpoint_display = df[["Metaheuristic"] + checkpoint_cols] if "Metaheuristic" in df.columns else df[checkpoint_cols]
+        display_cols_checkpoint = []
+        if "Metaheuristic" in df.columns:
+            display_cols_checkpoint.append("Metaheuristic")
+        if "First Solution" in df.columns:
+            display_cols_checkpoint.append("First Solution")
+        display_cols_checkpoint.extend(checkpoint_cols)
+        checkpoint_display = df[display_cols_checkpoint]
         st.dataframe(checkpoint_display, width='stretch')
     else:
         st.info("No convergence data available.")

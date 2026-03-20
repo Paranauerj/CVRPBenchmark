@@ -83,6 +83,14 @@ def plot_convergence_comparison(all_histories, exp_names, title="Convergence Com
     
     colors = plt.cm.tab10(np.linspace(0, 1, len(exp_names)))
     
+    # Find max time across all histories (for extending lines to end of plot)
+    max_time = 0
+    for exp_name in exp_names:
+        if exp_name in all_histories and all_histories[exp_name]:
+            history = all_histories[exp_name]
+            if history:
+                max_time = max(max_time, history[-1][0])
+    
     for idx, exp_name in enumerate(exp_names):
         if exp_name not in all_histories or not all_histories[exp_name]:
             continue
@@ -90,6 +98,11 @@ def plot_convergence_comparison(all_histories, exp_names, title="Convergence Com
         history = all_histories[exp_name]
         times = [h[0] for h in history]      # First element: time
         costs = [h[2] for h in history]      # Third element: cost
+        
+        # Extend to end of time axis for step plot
+        if history and times[-1] < max_time:
+            times = times + [max_time]
+            costs = costs + [costs[-1]]
         
         # Convert to "best cost found so far" (running minimum)
         best_so_far = []
@@ -99,7 +112,7 @@ def plot_convergence_comparison(all_histories, exp_names, title="Convergence Com
             best_so_far.append(min_cost)
         
         color = colors[idx % len(colors)]
-        ax1.plot(times, best_so_far, '-o', label=exp_name, color=color, linewidth=2, markersize=4)
+        ax1.plot(times, best_so_far, '-o', label=exp_name, color=color, linewidth=2, markersize=4, drawstyle='steps-post')
         
         # Also plot iteration count on second axis (index as iteration count)
         iterations = list(range(len(best_so_far)))
@@ -195,6 +208,8 @@ def plot_single_benchmark_results(instance_data, all_histories, all_best_routes,
                         st.metric("Best Cost Found", f"{best_cost:.2f}")
                     
                     fig_routes = plot_routes(customers, routes, title=f"Routes - {exp_name}")
-                    st.pyplot(fig_routes, width='stretch')
+                    col1, col2 = st.columns([1, 1])
+                    with col1:
+                        st.pyplot(fig_routes)
                 else:
                     st.info(f"No route data for {exp_name}")

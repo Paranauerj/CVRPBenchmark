@@ -209,7 +209,7 @@ with tab_single:
     with col1:
         run_sync = st.checkbox(
             "⚡ Run Synchronously",
-            value=False,
+            value=True,
             help="Run in current session (page must stay open)"
         )
     
