@@ -157,7 +157,9 @@ with tab_single:
         
         # Display instance info
         if sel_inst:
-            st.metric("📍 Customers", num_nodes if num_nodes else "?")
+            # Uchoa instances don't include depot in num_nodes, Gaetano does
+            customers_count = num_nodes if sel_source == "uchoa" else (num_nodes - 1 if num_nodes else 0)
+            st.metric("📍 Customers", customers_count if customers_count else "?")
             if bks_cost:
                 st.metric("🎖️ BKS Cost", f"{bks_cost:.0f}")
             else:

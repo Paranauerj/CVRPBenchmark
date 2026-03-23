@@ -40,11 +40,17 @@ def prepare_experiments(settings):
 
 def extract_instance_metadata(instance_data, instance_name):
     """Extract metadata from instance data."""
+    # Determine if Gaetano (num_nodes includes depot) or Uchoa (num_nodes doesn't)
+    is_gaetano = instance_name.startswith("LDG")
+    num_nodes = instance_data.get('num_nodes', 0)
+    customers = (num_nodes - 1) if is_gaetano else num_nodes
+    
     meta_features = parse_gaetano_metadata(instance_name)
+    
     return {
         "name": instance_name,
         "meta": meta_features,
-        "customers": instance_data.get('num_nodes', 0) - 1,
+        "customers": customers,
         "vehicles": instance_data.get('num_vehicles', 0),
         "capacity": instance_data.get('capacity', 0)
     }
