@@ -16,7 +16,7 @@ def get_climate_from_filename(filename):
 def get_cost_at_time(history, time_limit_sec):
     """
     Finds the best cost found within the time_limit_sec based on history.
-    History is a list of tuples: (time_elapsed, iterations, cost)
+    History is a list of tuples: (time_elapsed, accepted_neighbors, cost)
     """
     if not history:
         return None

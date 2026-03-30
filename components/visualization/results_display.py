@@ -2,7 +2,7 @@
 
 import streamlit as st
 from components.utils import instance_data_parser
-from components.visualization.plotting import plot_routes, plot_convergence
+from components.ui.plotting import plot_routes, plot_convergence
 
 
 def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histories):
@@ -62,7 +62,7 @@ def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histo
         st.pyplot(fig_time)
         
     with col2:
-        st.markdown("#### Cost vs. Iterations")
+        st.markdown("#### Cost vs. Accepted Neighbors")
         fig_iter = plot_convergence(all_histories, "iterations", max_val=max_iter_val)
         st.pyplot(fig_iter)
 

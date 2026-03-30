@@ -27,12 +27,12 @@ def _create_routing_model(data):
     return manager, routing
 
 class SmartLimitCallback:
-    def __init__(self, routing, no_improvement_limit=None, target_cost=None, no_improvement_iterations_limit=None):
+    def __init__(self, routing, no_improvement_limit=None, target_cost=None, no_improvement_neighbors_limit=None):
         self.routing = routing
         self.solver = routing.solver()
         self.no_improvement_limit = no_improvement_limit
         self.target_cost = target_cost
-        self.no_improvement_iterations_limit = no_improvement_iterations_limit
+        self.no_improvement_neighbors_limit = no_improvement_neighbors_limit
         
         self.best_objective = float('inf')
         self.last_improvement_time = time.time()
@@ -40,7 +40,7 @@ class SmartLimitCallback:
         self.start_time = time.time()
         
         # --- NEW: History Tracking ---
-        # List of tuples: (time_elapsed, iterations, cost)
+        # List of tuples: (time_elapsed, accepted_neighbors, cost)
         self.history = []
 
     def on_solution_callback(self):
@@ -73,9 +73,9 @@ class SmartLimitCallback:
                 if time.time() - self.last_improvement_time > self.no_improvement_limit:
                     return True
             
-            if self.no_improvement_iterations_limit is not None:
+            if self.no_improvement_neighbors_limit is not None:
                  current_neighbors = self.solver.AcceptedNeighbors()
-                 if current_neighbors - self.last_improvement_neighbors > self.no_improvement_iterations_limit:
+                 if current_neighbors - self.last_improvement_neighbors > self.no_improvement_neighbors_limit:
                      return True
         return False
 
@@ -87,7 +87,7 @@ def solve_cvrp(data,
                lns_time_limit_seconds=None, 
                target_cost=None, 
                no_improvement_limit=None,
-               no_improvement_iterations_limit=None,
+               no_improvement_neighbors_limit=None,
                random_seed=None):
     
     manager, routing = _create_routing_model(data)
@@ -106,11 +106,11 @@ def solve_cvrp(data,
     routing.CloseModelWithParameters(search_parameters)
 
     # Always create the callback to track history, even if no custom limits are set
-    limit_handler = SmartLimitCallback(routing, no_improvement_limit, target_cost, no_improvement_iterations_limit)
+    limit_handler = SmartLimitCallback(routing, no_improvement_limit, target_cost, no_improvement_neighbors_limit)
     routing.AddAtSolutionCallback(limit_handler.on_solution_callback)
     
     # Only add custom limit if needed
-    if target_cost is not None or no_improvement_limit is not None or no_improvement_iterations_limit is not None:
+    if target_cost is not None or no_improvement_limit is not None or no_improvement_neighbors_limit is not None:
         solver = routing.solver()
         custom_limit = solver.CustomLimit(limit_handler.check_limit_callback)
         routing.AddSearchMonitor(custom_limit)
@@ -131,7 +131,7 @@ def solve_cvrp(data,
             if route:
                 routes.append(route)
                 
-        # Return tuple: (Cost, Iterations, Routes, History)
+        # Return tuple: (Cost, Accepted Neighbors, Routes, History)
         return solution.ObjectiveValue(), routing.solver().AcceptedNeighbors(), routes, limit_handler.history
     else:
         return None, None, None, None

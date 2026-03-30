@@ -7,7 +7,7 @@ A comprehensive Streamlit web application for benchmarking Capacitated Vehicle R
 ✨ **Interactive Web Interface** — Streamlit-based UI with intuitive tabs and real-time results  
 🚀 **Single Instance Benchmarking** — Run algorithms on individual instances with parametric control  
 📊 **Bulk Benchmarking** — Benchmark multiple instances in parallel with progress tracking  
-📈 **Convergence Visualization** — Plot cost improvements over time and iterations  
+📈 **Convergence Visualization** — Plot cost improvements over time and accepted neighbors  
 🗺️ **Route Visualization** — Display vehicle routes with color-coded vehicles  
 ⚙️ **Configurable Solvers** — Support for multiple first solution strategies and metaheuristics  
 🔄 **Background Execution** — Run benchmarks asynchronously without blocking the UI  
@@ -97,8 +97,8 @@ Four core functions shared between single/bulk execution:
 
 ### Convergence Tracking
 - **Time checkpoints:** [5, 10, 15, 20, 30, 60] seconds
-- **History format:** (time_elapsed, iterations, cost) tuples
-- **Best-of-reps:** Visualization shows best iteration (lowest final cost)
+- **History format:** (time_elapsed, accepted_neighbors, cost) tuples
+- **Best-of-reps:** Visualization shows best run (lowest final cost)
 - **Step-function plot:** Cost stays constant until next improvement
 
 ### Results Structure (31 Columns)
@@ -130,7 +130,7 @@ Stops on first successful solution.
 After benchmarking, results show:
 1. **Benchmark Results Table** — Key metrics with formatting
 2. **Convergence Analysis** — Time checkpoint costs
-3. **Convergence Plots** — Cost over time + Cost over iterations
+3. **Convergence Plots** — Cost over time + Cost over accepted neighbors
 4. **Route Visualization** — Tabbed view per algorithm
 
 ## Background Tasks

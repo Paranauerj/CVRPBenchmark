@@ -48,7 +48,7 @@ def run_single_benchmark(instance_data, settings, bks_cost, instance_name="Unkno
         all_best_routes[exp['name']] = data["best_routes"]
         
         result_row = build_result_row(exp, instance_meta, data["costs"], data["times"], 
-                                      data["iters_list"], data["best_routes"], bks_cost, data["checkpoints"])
+                                      data["neighbors_list"], data["best_routes"], bks_cost, data["checkpoints"])
         results_list.append(result_row)
 
     df = pd.DataFrame(results_list)
@@ -119,7 +119,7 @@ def run_single_benchmark_background(task, settings, instance_data_file, bks_cost
                     # If we found a solution, break out of vehicle retry loop
                     if data["costs"]:
                         result_row = build_result_row(exp, instance_meta, data["costs"], data["times"],
-                                                      data["iters_list"], data["best_routes"], bks_cost, data["checkpoints"])
+                                                      data["neighbors_list"], data["best_routes"], bks_cost, data["checkpoints"])
                         results_list.append(result_row)
                         task.log(f"Solution found for {exp['name']} with {vehicle_attempt} additional vehicles")
                         break  # Exit vehicle retry loop since we found a solution
@@ -127,7 +127,7 @@ def run_single_benchmark_background(task, settings, instance_data_file, bks_cost
                     # If last attempt with no solution yet
                     if vehicle_attempt == 5:
                         result_row = build_result_row(exp, instance_meta, [], data["times"],
-                                                      data["iters_list"], None, bks_cost, data["checkpoints"])
+                                                      data["neighbors_list"], None, bks_cost, data["checkpoints"])
                         results_list.append(result_row)
                         task.log(f"No solution found for {exp['name']} even with +5 vehicles", level="warning")
                 

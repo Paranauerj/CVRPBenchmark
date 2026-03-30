@@ -84,7 +84,7 @@ def run_bulk_benchmark(settings):
             
             if data["costs"]:
                 result_row = build_result_row(exp, instance_meta, data["costs"], data["times"],
-                                             data["iters_list"], data["best_routes"], bks_val, data["checkpoints"])
+                                             data["neighbors_list"], data["best_routes"], bks_val, data["checkpoints"])
                 bulk_results.append(result_row)
 
     st.success("Bulk Benchmark Complete!")
@@ -207,7 +207,7 @@ def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, p
                     # If we found a solution, break out of vehicle retry loop
                     if data["costs"]:
                         result_row = build_result_row(exp, instance_meta, data["costs"], data["times"],
-                                                      data["iters_list"], data["best_routes"], bks_val, data["checkpoints"])
+                                                      data["neighbors_list"], data["best_routes"], bks_val, data["checkpoints"])
                         results.append(result_row)
                         task.log(f"✓ Solution found for {inst_name} | {exp['name']} with {vehicle_attempt} additional vehicles. Cost: {min(data['costs']):.2f}")
                         break  # Exit vehicle retry loop since we found a solution
@@ -215,7 +215,7 @@ def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, p
                     # If this is the last vehicle attempt and still no solution, record as failed
                     if vehicle_attempt == 5:
                         result_row = build_result_row(exp, instance_meta, [], data["times"],
-                                                      data["iters_list"], None, bks_val, data["checkpoints"])
+                                                      data["neighbors_list"], None, bks_val, data["checkpoints"])
                         results.append(result_row)
                         task.log(f"✗ No solution found for {inst_name} | {exp['name']} even with +5 vehicles", level="warning")
                 

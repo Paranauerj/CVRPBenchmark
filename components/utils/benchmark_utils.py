@@ -3,8 +3,8 @@ import time
 def execute_and_measure(algorithm_func, instance_data, **kwargs):
     """
     Executes algorithm.
-    Expected return from solver: (cost, iterations, routes, history).
-    Returns dict with 'cpu_time', 'objective_value', 'iterations', 'routes', 'history'.
+    Expected return from solver: (cost, accepted_neighbors, routes, history).
+    Returns dict with 'cpu_time', 'objective_value', 'accepted_neighbors', 'routes', 'history'.
     """
     start_cpu_time = time.process_time()
 
@@ -15,14 +15,14 @@ def execute_and_measure(algorithm_func, instance_data, **kwargs):
     cpu_time = end_cpu_time - start_cpu_time
     
     objective_value = None
-    iterations = 0
+    accepted_neighbors = 0
     routes = None
     history = []
 
-    # Handle tuple return (cost, iterations, routes, history)
+    # Handle tuple return (cost, accepted_neighbors, routes, history)
     if isinstance(result, tuple):
         if len(result) >= 1: objective_value = result[0]
-        if len(result) >= 2: iterations = result[1]
+        if len(result) >= 2: accepted_neighbors = result[1]
         if len(result) >= 3: routes = result[2]
         if len(result) >= 4: history = result[3] # --- NEW ---
     else:
@@ -36,7 +36,7 @@ def execute_and_measure(algorithm_func, instance_data, **kwargs):
     return {
         "cpu_time": cpu_time,
         "objective_value": objective_value,
-        "iterations": iterations,
+        "accepted_neighbors": accepted_neighbors,
         "routes": routes,
         "history": history
     }

@@ -40,8 +40,8 @@ def plot_routes(instance_data, routes, title="Routes"):
 def plot_convergence(histories_dict, metric_type="time", max_val=None):
     """
     Plots convergence curves.
-    metric_type: "time" or "iterations"
-    max_val: The maximum x-axis value (time or iterations) to stretch lines to.
+    metric_type: "time" or "accepted_neighbors"
+    max_val: The maximum x-axis value (time or accepted_neighbors) to stretch lines to.
     """
     fig, ax = plt.subplots(figsize=(10, 6))
     
@@ -80,7 +80,7 @@ def plot_convergence(histories_dict, metric_type="time", max_val=None):
         ax.text(0.5, 0.5, "No convergence data available\n(No solutions found)", 
                 ha='center', va='center', fontsize=12, transform=ax.transAxes)
             
-    ax.set_xlabel("Time (s)" if metric_type == "time" else "Iterations")
+    ax.set_xlabel("Time (s)" if metric_type == "time" else "Accepted Neighbors")
     ax.set_ylabel("Cost")
     ax.set_title(f"Convergence over {metric_type.capitalize()}")
     if has_data:

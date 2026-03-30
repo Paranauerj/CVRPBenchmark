@@ -67,12 +67,67 @@ def plot_routes(customers, routes, depot_pos=(0, 0), title="Routes"):
     return fig
 
 
+def plot_convergence(histories_dict, metric_type="time", max_val=None):
+    """
+    Plots convergence curves.
+    metric_type: "time" or "accepted_neighbors"
+    max_val: The maximum x-axis value (time or accepted_neighbors) to stretch lines to.
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    
+    has_data = False
+    
+    for exp_name, runs in histories_dict.items():
+        if not runs:
+            continue
+            
+        best_run_idx = -1
+        best_run_final_cost = float('inf')
+        
+        for idx, history in enumerate(runs):
+            if history and history[-1][2] < best_run_final_cost:
+                best_run_final_cost = history[-1][2]
+                best_run_idx = idx
+                
+        if best_run_idx != -1:
+            has_data = True
+            history = runs[best_run_idx]
+            
+            x_data = []
+            y_data = []
+            
+            for pt in history:
+                if metric_type == "time":
+                    x_data.append(pt[0])
+                else:
+                    x_data.append(pt[1])
+                y_data.append(pt[2])
+            
+            if max_val is not None and x_data and x_data[-1] < max_val:
+                x_data.append(max_val)
+                y_data.append(y_data[-1])
+                
+            ax.step(x_data, y_data, where='post', label=exp_name, linewidth=2)
+    
+    if not has_data:
+        ax.text(0.5, 0.5, "No convergence data available\n(No solutions found)", 
+                ha='center', va='center', fontsize=12, transform=ax.transAxes)
+            
+    ax.set_xlabel("Time (s)" if metric_type == "time" else "Accepted Neighbors")
+    ax.set_ylabel("Cost")
+    ax.set_title(f"Convergence over {metric_type.capitalize()}")
+    if has_data:
+        ax.legend()
+    ax.grid(True, linestyle='--', alpha=0.5)
+    return fig
+
+
 def plot_convergence_comparison(all_histories, exp_names, title="Convergence Comparison"):
     """
     Plot convergence curves for multiple experiments.
     
     Args:
-        all_histories: Dict mapping exp_name -> list of (time, iterations, cost) tuples
+        all_histories: Dict mapping exp_name -> list of (time, accepted_neighbors, cost) tuples
         exp_names: List of experiment names in order
         title: Title for the plot
     
@@ -114,9 +169,9 @@ def plot_convergence_comparison(all_histories, exp_names, title="Convergence Com
         color = colors[idx % len(colors)]
         ax1.plot(times, best_so_far, '-o', label=exp_name, color=color, linewidth=2, markersize=4, drawstyle='steps-post')
         
-        # Also plot iteration count on second axis (index as iteration count)
-        iterations = list(range(len(best_so_far)))
-        ax2.plot(iterations, best_so_far, '-o', label=exp_name, color=color, linewidth=2, markersize=4)
+        # Also plot accepted neighbors on second axis
+        accepted_neighbors = list(range(len(best_so_far)))
+        ax2.plot(accepted_neighbors, best_so_far, '-o', label=exp_name, color=color, linewidth=2, markersize=4)
     
     ax1.set_xlabel('Time (seconds)')
     ax1.set_ylabel('Best Cost Found')
@@ -124,9 +179,9 @@ def plot_convergence_comparison(all_histories, exp_names, title="Convergence Com
     ax1.legend(loc='best', fontsize=9)
     ax1.grid(True, alpha=0.3)
     
-    ax2.set_xlabel('Iteration Count')
+    ax2.set_xlabel('Accepted Neighbors')
     ax2.set_ylabel('Best Cost Found')
-    ax2.set_title('Cost Over Iterations')
+    ax2.set_title('Cost Over Accepted Neighbors')
     ax2.legend(loc='best', fontsize=9)
     ax2.grid(True, alpha=0.3)
     
@@ -154,6 +209,7 @@ def plot_single_benchmark_results(instance_data, all_histories, all_best_routes,
     # Get customer locations (skip depot at index 0)
     coordinates = instance_data.get('coordinates', {})
     customers = []
+    depot_pos = coordinates.get(0, (0, 0))  # Extract actual depot position
     if coordinates:
         # Extract customer coordinates (indices 1 to n), skip depot (index 0)
         num_nodes = instance_data.get('num_nodes', 0)
@@ -164,11 +220,11 @@ def plot_single_benchmark_results(instance_data, all_histories, all_best_routes,
     # Show convergence comparison
     st.subheader("📊 Convergence Analysis")
     
-    # Build consolidated history for comparison using best iteration
+    # Build consolidated history for comparison using best run
     consolidated_histories = {}
     for exp_name, history_list in all_histories.items():
         # all_histories[exp_name] is a list of histories (one per repetition)
-        # Select the best iteration (lowest final cost)
+        # Select the best run (lowest final cost)
         if history_list and len(history_list) > 0:
             best_history = None
             best_final_cost = float('inf')
@@ -207,7 +263,7 @@ def plot_single_benchmark_results(instance_data, all_histories, all_best_routes,
                         best_cost = consolidated_histories[exp_name][-1][2]  # Last tuple's cost (index 2)
                         st.metric("Best Cost Found", f"{best_cost:.2f}")
                     
-                    fig_routes = plot_routes(customers, routes, title=f"Routes - {exp_name}")
+                    fig_routes = plot_routes(customers, routes, depot_pos=depot_pos, title=f"Routes - {exp_name}")
                     col1, col2 = st.columns([1, 1])
                     with col1:
                         st.pyplot(fig_routes)

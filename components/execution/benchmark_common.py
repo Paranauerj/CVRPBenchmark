@@ -25,7 +25,7 @@ def prepare_experiments(settings):
                 "lns_time_limit_seconds": settings["lns_limit"],
                 "target_cost": settings.get("target_gap"),
                 "no_improvement_limit": settings["no_improv"],
-                "no_improvement_iterations_limit": settings["no_improv_iter"]
+                "no_improvement_neighbors_limit": settings["no_improv_iter"]
             }
             experiments.append({
                 "name": f"{mh_label} [{fs_label}]",
@@ -56,7 +56,7 @@ def extract_instance_metadata(instance_data, instance_name):
     }
 
 
-def build_result_row(exp, instance_meta, costs, times, iters_list, best_routes, bks_cost, checkpoint_data):
+def build_result_row(exp, instance_meta, costs, times, neighbors_list, best_routes, bks_cost, checkpoint_data):
     """Build a result row with all standard columns."""
     if costs:
         best = min(costs)
@@ -104,7 +104,7 @@ def build_result_row(exp, instance_meta, costs, times, iters_list, best_routes, 
 
 def run_experiment_reps(exp, instance_data, reps, progress_callback=None):
     """Run an experiment for given repetitions and return collected data."""
-    costs, times, iters_list, best_routes = [], [], [], None
+    costs, times, neighbors_list, best_routes = [], [], [], None
     checkpoint_collectors = {t: [] for t in TIME_CHECKPOINTS}
     all_histories = []  # Store full convergence history from each run
     
@@ -123,8 +123,8 @@ def run_experiment_reps(exp, instance_data, reps, progress_callback=None):
             costs.append(res["objective_value"])
             if not best_routes:
                 best_routes = res["routes"]
-        if res["iterations"] is not None:
-            iters_list.append(res["iterations"])
+        if res["accepted_neighbors"] is not None:
+            neighbors_list.append(res["accepted_neighbors"])
         
         # Collect costs at time checkpoints
         if res.get("history"):
@@ -139,7 +139,7 @@ def run_experiment_reps(exp, instance_data, reps, progress_callback=None):
     return {
         "costs": costs,
         "times": times,
-        "iters_list": iters_list,
+        "neighbors_list": neighbors_list,
         "best_routes": best_routes,
         "checkpoints": checkpoint_collectors,
         "all_histories": all_histories
