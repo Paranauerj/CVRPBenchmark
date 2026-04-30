@@ -3,6 +3,7 @@
 import streamlit as st
 from components.utils import instance_data_parser
 from components.visualization.plotting import plot_routes, plot_convergence_comparison, plot_single_benchmark_results
+from components import constants as C
 
 
 def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histories, instance_data=None, all_best_routes=None):
@@ -20,31 +21,31 @@ def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histo
     display_cols = []
     
     # Algorithm info
-    if "Metaheuristic" in df.columns:
-        display_cols.append("Metaheuristic")
-    if "First Solution" in df.columns:
-        display_cols.append("First Solution")
+    if C.COL_METAHEURISTIC in df.columns:
+        display_cols.append(C.COL_METAHEURISTIC)
+    if C.COL_FIRST_SOLUTION in df.columns:
+        display_cols.append(C.COL_FIRST_SOLUTION)
     
     # Cost columns
-    if "Best Cost" in df.columns:
-        display_cols.append("Best Cost")
-    if "Avg Cost" in df.columns:
-        display_cols.append("Avg Cost")
+    if C.COL_BEST_COST in df.columns:
+        display_cols.append(C.COL_BEST_COST)
+    if C.COL_AVG_COST in df.columns:
+        display_cols.append(C.COL_AVG_COST)
     
     # Gap columns (if we have BKS)
     if bks_cost is not None:
-        if "Best Gap (%)" in df.columns:
-            display_cols.append("Best Gap (%)")
-        if "Avg Gap (%)" in df.columns:
-            display_cols.append("Avg Gap (%)")
+        if C.COL_BEST_GAP in df.columns:
+            display_cols.append(C.COL_BEST_GAP)
+        if C.COL_AVG_GAP in df.columns:
+            display_cols.append(C.COL_AVG_GAP)
     
     # Time columns
-    if "Avg CPU Time (s)" in df.columns:
-        display_cols.append("Avg CPU Time (s)")
+    if C.COL_AVG_CPU_TIME in df.columns:
+        display_cols.append(C.COL_AVG_CPU_TIME)
     
     # Repetitions
-    if "Repetitions" in df.columns:
-        display_cols.append("Repetitions")
+    if C.COL_REPETITIONS in df.columns:
+        display_cols.append(C.COL_REPETITIONS)
     
     # Filter to only existing columns
     display_cols = [c for c in display_cols if c in df.columns]
@@ -52,53 +53,43 @@ def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histo
     if display_cols:
         df_display = df[display_cols].copy()
         
-        # Configure columns formatting
-        column_config = {}
-        if "Best Cost" in df_display.columns:
-            column_config["Best Cost"] = st.column_config.NumberColumn("Best Cost", format="%.2f")
-        if "Avg Cost" in df_display.columns:
-            column_config["Avg Cost"] = st.column_config.NumberColumn("Avg Cost", format="%.2f")
-        if "Best Gap (%)" in df_display.columns:
-            column_config["Best Gap (%)"] = st.column_config.NumberColumn("Best Gap (%)", format="%.4f%%")
-        if "Avg Gap (%)" in df_display.columns:
-            column_config["Avg Gap (%)"] = st.column_config.NumberColumn("Avg Gap (%)", format="%.4f%%")
-        if "Avg CPU Time (s)" in df_display.columns:
-            column_config["Avg CPU Time (s)"] = st.column_config.NumberColumn("Avg CPU Time (s)", format="%.6f")
+        # Use helper function to get column config
+        column_config = C.get_column_config_for_display(display_cols)
         
         st.dataframe(df_display, width='stretch', column_config=column_config if column_config else None)
     
     # 2. Time Checkpoint Analysis
     st.subheader("Convergence Analysis")
     
-    checkpoint_cols = [col for col in df.columns if col.startswith("Best Cost @")]
+    checkpoint_cols = [col for col in df.columns if col.startswith(C.CHECKPOINT_BEST_COST_TEMPLATE.split("{}")[0])]
     if checkpoint_cols:
         st.write("**Cost at Time Checkpoints:**")
         display_cols_checkpoint = []
-        if "Metaheuristic" in df.columns:
-            display_cols_checkpoint.append("Metaheuristic")
-        if "First Solution" in df.columns:
-            display_cols_checkpoint.append("First Solution")
+        if C.COL_METAHEURISTIC in df.columns:
+            display_cols_checkpoint.append(C.COL_METAHEURISTIC)
+        if C.COL_FIRST_SOLUTION in df.columns:
+            display_cols_checkpoint.append(C.COL_FIRST_SOLUTION)
         display_cols_checkpoint.extend(checkpoint_cols)
         checkpoint_display = df[display_cols_checkpoint]
         st.dataframe(checkpoint_display, width='stretch')
     else:
-        st.info("No convergence data available.")
+        st.info(C.ERROR_NO_CHECKPOINT_DATA)
     
     # 3. Route and Convergence Visualization
     st.divider()
     if instance_data and all_histories:
         # Get experiment names from results
         exp_names = []
-        if "Metaheuristic" in df.columns and "First Solution" in df.columns:
+        if C.COL_METAHEURISTIC in df.columns and C.COL_FIRST_SOLUTION in df.columns:
             for _, row in df.iterrows():
-                mh = row.get("Metaheuristic")
-                fs = row.get("First Solution")
+                mh = row.get(C.COL_METAHEURISTIC)
+                fs = row.get(C.COL_FIRST_SOLUTION)
                 if mh and fs:
                     exp_names.append(f"{mh} [{fs}]")
         
         if exp_names and all_best_routes:
             plot_single_benchmark_results(instance_data, all_histories, all_best_routes, exp_names)
         else:
-            st.info("Route visualization requires both convergence history and best routes data.")
+            st.info(C.ERROR_NO_VISUALIZATION_DATA)
 
 

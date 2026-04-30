@@ -4,13 +4,17 @@ import statistics
 import random
 from components.utils.benchmark_utils import execute_and_measure
 from components.utils.helpers import get_cost_at_time, parse_gaetano_metadata
+from components.models import (
+    ExperimentConfig, InstanceMetadata, RunStatistics, BenchmarkResult
+)
+from components import constants as C
 
 
 # Time checkpoints for tracking convergence
 TIME_CHECKPOINTS = [5, 10, 15, 20, 30, 60]
 
 
-def prepare_experiments(settings):
+def prepare_experiments(settings) -> list[ExperimentConfig]:
     """Prepare experiment configurations from settings."""
     experiments = []
     for fs in settings["sel_fs"]:
@@ -27,18 +31,18 @@ def prepare_experiments(settings):
                 "no_improvement_limit": settings["no_improv"],
                 "no_improvement_neighbors_limit": settings["no_improv_iter"]
             }
-            experiments.append({
-                "name": f"{mh_label} [{fs_label}]",
-                "fs_label": fs_label,
-                "mh_label": mh_label,
-                "func": settings["solver_func"],
-                "kwargs": kw,
-                "reps": settings["reps"]
-            })
+            experiments.append(ExperimentConfig(
+                name=f"{mh_label} [{fs_label}]",
+                fs_label=fs_label,
+                mh_label=mh_label,
+                func=settings["solver_func"],
+                kwargs=kw,
+                reps=settings["reps"]
+            ))
     return experiments
 
 
-def extract_instance_metadata(instance_data, instance_name):
+def extract_instance_metadata(instance_data, instance_name) -> InstanceMetadata:
     """Extract metadata from instance data."""
     # Determine if Gaetano (num_nodes includes depot) or Uchoa (num_nodes doesn't)
     is_gaetano = instance_name.startswith("LDG")
@@ -47,16 +51,22 @@ def extract_instance_metadata(instance_data, instance_name):
     
     meta_features = parse_gaetano_metadata(instance_name)
     
-    return {
-        "name": instance_name,
-        "meta": meta_features,
-        "customers": customers,
-        "vehicles": instance_data.get('num_vehicles', 0),
-        "capacity": instance_data.get('capacity', 0)
-    }
+    return InstanceMetadata(
+        name=instance_name,
+        customers=customers,
+        vehicles=instance_data.get('num_vehicles', 0),
+        capacity=instance_data.get('capacity', 0),
+        depot_layout=meta_features.get("Depot Layout", "Unknown"),
+        customer_layout=meta_features.get("Customer Layout", "Unknown"),
+        demand_profile=meta_features.get("Demand Profile ID", "Unknown"),
+        route_class=meta_features.get("Route Length Class", "Unknown"),
+        climate=meta_features.get("Climate", "Unknown")
+    )
 
 
-def build_result_row(exp, instance_meta, costs, times, neighbors_list, best_routes, bks_cost, checkpoint_data):
+def build_result_row(exp: ExperimentConfig, instance_meta: InstanceMetadata, 
+                     costs, times, neighbors_list, best_routes, bks_cost, 
+                     checkpoint_data) -> BenchmarkResult:
     """Build a result row with all standard columns."""
     if costs:
         best = min(costs)
@@ -68,41 +78,41 @@ def build_result_row(exp, instance_meta, costs, times, neighbors_list, best_rout
     best_gap = ((best - bks_cost) / bks_cost * 100) if (bks_cost and best) else None
     avg_gap = ((avg - bks_cost) / bks_cost * 100) if (bks_cost and avg) else None
     
-    row = {
-        "Instance": instance_meta["name"],
-        "Depot Layout": instance_meta["meta"]["Depot Layout"],
-        "Cust Layout": instance_meta["meta"]["Customer Layout"],
-        "Demand Type": instance_meta["meta"]["Demand Profile ID"],
-        "Route Class": instance_meta["meta"]["Route Length Class"],
-        "Climate": instance_meta["meta"]["Climate"],
-        "Customers": instance_meta["customers"],
-        "Vehicles": instance_meta["vehicles"],
-        "Capacity": instance_meta["capacity"],
-        "First Solution": exp.get("fs_label"),
-        "Metaheuristic": exp.get("mh_label"),
-        "Repetitions": exp["reps"],
-        "Avg Cost": avg,
-        "Best Cost": best,
-        "BKS Cost": bks_cost,
-        "Best Gap (%)": best_gap,
-        "Avg Gap (%)": avg_gap,
-        "Avg CPU Time (s)": statistics.mean(times) if times else None
-    }
-    
-    # Add time checkpoint columns
+    # Build checkpoint columns dictionary
+    checkpoints = {}
     for t_chk in TIME_CHECKPOINTS:
         costs_at_t = checkpoint_data.get(t_chk, [])
         if costs_at_t:
-            row[f"Avg Cost @ {t_chk}s"] = statistics.mean(costs_at_t)
-            row[f"Best Cost @ {t_chk}s"] = min(costs_at_t)
+            checkpoints[C.get_checkpoint_avg_cost_col(t_chk)] = statistics.mean(costs_at_t)
+            checkpoints[C.get_checkpoint_best_cost_col(t_chk)] = min(costs_at_t)
         else:
-            row[f"Avg Cost @ {t_chk}s"] = None
-            row[f"Best Cost @ {t_chk}s"] = None
+            checkpoints[C.get_checkpoint_avg_cost_col(t_chk)] = None
+            checkpoints[C.get_checkpoint_best_cost_col(t_chk)] = None
     
-    return row
+    return BenchmarkResult(
+        instance=instance_meta.name,
+        depot_layout=instance_meta.depot_layout,
+        customer_layout=instance_meta.customer_layout,
+        demand_type=instance_meta.demand_profile,
+        route_class=instance_meta.route_class,
+        climate=instance_meta.climate,
+        customers=instance_meta.customers,
+        vehicles=instance_meta.vehicles,
+        capacity=instance_meta.capacity,
+        first_solution=exp.fs_label,
+        metaheuristic=exp.mh_label,
+        repetitions=exp.reps,
+        avg_cost=avg,
+        best_cost=best,
+        bks_cost=bks_cost,
+        best_gap_percent=best_gap,
+        avg_gap_percent=avg_gap,
+        avg_cpu_time=statistics.mean(times) if times else None,
+        checkpoints=checkpoints
+    )
 
 
-def run_experiment_reps(exp, instance_data, reps, progress_callback=None):
+def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, progress_callback=None) -> RunStatistics:
     """Run an experiment for given repetitions and return collected data."""
     costs, times, neighbors_list, best_routes = [], [], [], None
     checkpoint_collectors = {t: [] for t in TIME_CHECKPOINTS}
@@ -112,35 +122,35 @@ def run_experiment_reps(exp, instance_data, reps, progress_callback=None):
         if progress_callback:
             progress_callback(rep, reps)
         
-        cur_kw = exp["kwargs"].copy()
+        cur_kw = exp.kwargs.copy()
         cur_kw["random_seed"] = random.randint(0, 2**31 - 1)
         
-        res = execute_and_measure(exp["func"], instance_data, **cur_kw)
+        res = execute_and_measure(exp.func, instance_data, **cur_kw)
         
-        if res["cpu_time"] is not None:
-            times.append(res["cpu_time"])
-        if res["objective_value"] is not None:
-            costs.append(res["objective_value"])
+        if res.cpu_time is not None:
+            times.append(res.cpu_time)
+        if res.objective_value is not None:
+            costs.append(res.objective_value)
             if not best_routes:
-                best_routes = res["routes"]
-        if res["accepted_neighbors"] is not None:
-            neighbors_list.append(res["accepted_neighbors"])
+                best_routes = res.routes
+        if res.accepted_neighbors is not None:
+            neighbors_list.append(res.accepted_neighbors)
         
         # Collect costs at time checkpoints
-        if res.get("history"):
+        if res.history:
             # Store full history for convergence visualization
-            all_histories.append(res["history"])
+            all_histories.append(res.history)
             
             for t_chk in TIME_CHECKPOINTS:
-                cost_at_t = get_cost_at_time(res["history"], t_chk)
+                cost_at_t = get_cost_at_time(res.history, t_chk)
                 if cost_at_t is not None:
                     checkpoint_collectors[t_chk].append(cost_at_t)
     
-    return {
-        "costs": costs,
-        "times": times,
-        "neighbors_list": neighbors_list,
-        "best_routes": best_routes,
-        "checkpoints": checkpoint_collectors,
-        "all_histories": all_histories
-    }
+    return RunStatistics(
+        costs=costs,
+        times=times,
+        neighbors_list=neighbors_list,
+        best_routes=best_routes,
+        checkpoints=checkpoint_collectors,
+        all_histories=all_histories
+    )

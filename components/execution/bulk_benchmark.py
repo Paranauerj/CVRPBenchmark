@@ -78,14 +78,14 @@ def run_bulk_benchmark(settings):
                 nonlocal current_step
                 current_step += 1
                 progress_bar.progress(min(current_step / total_steps, 1.0))
-                status_text.text(f"Processing: {inst_name} | {exp['name']} | Rep {rep+1}/{reps}")
+                status_text.text(f"Processing: {inst_name} | {exp.name} | Rep {rep+1}/{reps}")
             
-            data = run_experiment_reps(exp, inst_data, exp["reps"], progress_callback)
+            data = run_experiment_reps(exp, inst_data, exp.reps, progress_callback)
             
-            if data["costs"]:
-                result_row = build_result_row(exp, instance_meta, data["costs"], data["times"],
-                                             data["neighbors_list"], data["best_routes"], bks_val, data["checkpoints"])
-                bulk_results.append(result_row)
+            if data.costs:
+                result_row = build_result_row(exp, instance_meta, data.costs, data.times,
+                                             data.neighbors_list, data.best_routes, bks_val, data.checkpoints)
+                bulk_results.append(result_row.to_dict())
 
     st.success("Bulk Benchmark Complete!")
     st.session_state.run_bulk = False
@@ -175,7 +175,7 @@ def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, p
                     original_num = working_instance['num_vehicles']
                     working_instance['num_vehicles'] = original_num + vehicle_attempt
                     working_instance['vehicle_capacities'] = [working_instance['capacity']] * working_instance['num_vehicles']
-                    task.log(f"Retrying {inst_name} | {exp['name']} with {working_instance['num_vehicles']} vehicles (+{vehicle_attempt})")
+                    task.log(f"Retrying {inst_name} | {exp.name} with {working_instance['num_vehicles']} vehicles (+{vehicle_attempt})")
 
                 # Custom progress callback for background task
                 # Only count progress on first vehicle attempt to avoid exceeding 100%
@@ -196,28 +196,28 @@ def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, p
                             current_step = shared_state['current_step']
                             total_steps = shared_state['total_steps']
                     
-                    step_name = f"{inst_name} | {exp['name']} | Rep {rep+1}/{reps}"
+                    step_name = f"{inst_name} | {exp.name} | Rep {rep+1}/{reps}"
                     if vehicle_attempt > 0:
                         step_name += f" | Vehicles +{vehicle_attempt}"
                     task.update_progress(current_step, total_steps, step_name)
                 
                 try:
-                    data = run_experiment_reps(exp, working_instance, exp["reps"], bg_progress_callback)
+                    data = run_experiment_reps(exp, working_instance, exp.reps, bg_progress_callback)
                     
                     # If we found a solution, break out of vehicle retry loop
-                    if data["costs"]:
-                        result_row = build_result_row(exp, instance_meta, data["costs"], data["times"],
-                                                      data["neighbors_list"], data["best_routes"], bks_val, data["checkpoints"])
-                        results.append(result_row)
-                        task.log(f"✓ Solution found for {inst_name} | {exp['name']} with {vehicle_attempt} additional vehicles. Cost: {min(data['costs']):.2f}")
+                    if data.costs:
+                        result_row = build_result_row(exp, instance_meta, data.costs, data.times,
+                                                      data.neighbors_list, data.best_routes, bks_val, data.checkpoints)
+                        results.append(result_row.to_dict())
+                        task.log(f"✓ Solution found for {inst_name} | {exp.name} with {vehicle_attempt} additional vehicles. Cost: {min(data.costs):.2f}")
                         break  # Exit vehicle retry loop since we found a solution
                     
                     # If this is the last vehicle attempt and still no solution, record as failed
                     if vehicle_attempt == 5:
-                        result_row = build_result_row(exp, instance_meta, [], data["times"],
-                                                      data["neighbors_list"], None, bks_val, data["checkpoints"])
-                        results.append(result_row)
-                        task.log(f"✗ No solution found for {inst_name} | {exp['name']} even with +5 vehicles", level="warning")
+                        result_row = build_result_row(exp, instance_meta, [], data.times,
+                                                      data.neighbors_list, None, bks_val, data.checkpoints)
+                        results.append(result_row.to_dict())
+                        task.log(f"✗ No solution found for {inst_name} | {exp.name} even with +5 vehicles", level="warning")
                 
                 except InterruptedError:
                     return results

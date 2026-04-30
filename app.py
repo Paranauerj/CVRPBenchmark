@@ -108,20 +108,22 @@ with tab_single:
     with col1:
         # Instance source selector
         sources = get_instance_sources()
+        sel_source: str | None = None
+        
         if sources:
             sel_source = st.selectbox(
                 "📁 Instance Source",
                 options=sources,
                 help="Select instance collection (Uchoa, Gaetano, etc.)"
             )
+            assert sel_source is not None  # Type guard for Pylance
             source_dir = os.path.join("instances", sel_source)
+            # Get instances from selected source
+            names, p_map = find_instance_files(source_dir)
         else:
             st.error("No instance sources found. Please ensure instances/uchoa or instances/gaetano exist.")
-            sel_source = None
             source_dir = "instances"
-        
-        # Get instances from selected source
-        names, p_map = find_instance_files(source_dir) if sel_source else ([], {})
+            names, p_map = [], {}
         
         # Instance dropdown
         if names:
@@ -131,7 +133,7 @@ with tab_single:
                 help="Select instance to benchmark"
             )
         else:
-            st.warning(f"No instances found in '{sel_source}' folder.")
+            st.warning(f"No instances found in '{sel_source or 'selected'}' folder.")
             sel_inst = None
     
     with col2:
@@ -158,7 +160,7 @@ with tab_single:
         # Display instance info
         if sel_inst:
             # Uchoa instances don't include depot in num_nodes, Gaetano does
-            customers_count = num_nodes if sel_source == "uchoa" else (num_nodes - 1 if num_nodes else 0)
+            customers_count = num_nodes if (sel_source and sel_source.lower() == "uchoa") else (num_nodes - 1 if num_nodes else 0)
             st.metric("📍 Customers", customers_count if customers_count else "?")
             if bks_cost:
                 st.metric("🎖️ BKS Cost", f"{bks_cost:.0f}")
@@ -242,13 +244,14 @@ with tab_single:
                 
                 benchmark_settings = _prepare_benchmark_settings(sidebar_settings, target_gap, reps)
                 
-                results_df, all_histories, all_best_routes = run_single_benchmark(instance_data, benchmark_settings, bks_cost, sel_inst)
-                
-                st.session_state.results_df = results_df
-                st.session_state.all_histories = all_histories
-                st.session_state.all_best_routes = all_best_routes
-                st.session_state.instance_data = instance_data
-                st.success("✅ Benchmark completed!")
+                if sel_inst is not None:
+                    results_df, all_histories, all_best_routes = run_single_benchmark(instance_data, benchmark_settings, bks_cost, sel_inst)
+                    
+                    st.session_state.results_df = results_df
+                    st.session_state.all_histories = all_histories
+                    st.session_state.all_best_routes = all_best_routes
+                    st.session_state.instance_data = instance_data
+                    st.success("✅ Benchmark completed!")
         else:
             # Run asynchronously (background)
             task_id = str(uuid4())[:8]

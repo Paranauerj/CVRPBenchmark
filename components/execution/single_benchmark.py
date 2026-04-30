@@ -28,28 +28,28 @@ def run_single_benchmark(instance_data, settings, bks_cost, instance_name="Unkno
     all_histories = {}  # exp_name -> history data
     all_best_routes = {}  # exp_name -> best routes
     
-    total = sum(e["reps"] for e in experiments)
+    total = sum(e.reps for e in experiments)
     prog = st.progress(0.0)
     cnt = 0
     stat = st.empty()
 
     for exp in experiments:
-        stat.text(f"Running: {exp['name']}")
+        stat.text(f"Running: {exp.name}")
         
         def progress_callback(rep, reps):
             nonlocal cnt
             cnt += 1
             prog.progress(cnt / total)
         
-        data = run_experiment_reps(exp, instance_data, exp["reps"], progress_callback)
+        data = run_experiment_reps(exp, instance_data, exp.reps, progress_callback)
         
         # Store histories and best routes for visualization
-        all_histories[exp['name']] = data["all_histories"]
-        all_best_routes[exp['name']] = data["best_routes"]
+        all_histories[exp.name] = data.all_histories
+        all_best_routes[exp.name] = data.best_routes
         
-        result_row = build_result_row(exp, instance_meta, data["costs"], data["times"], 
-                                      data["neighbors_list"], data["best_routes"], bks_cost, data["checkpoints"])
-        results_list.append(result_row)
+        result_row = build_result_row(exp, instance_meta, data.costs, data.times, 
+                                      data.neighbors_list, data.best_routes, bks_cost, data.checkpoints)
+        results_list.append(result_row.to_dict())
 
     df = pd.DataFrame(results_list)
     stat.empty()
@@ -85,7 +85,7 @@ def run_single_benchmark_background(task, settings, instance_data_file, bks_cost
         task.log(f"Prepared {len(experiments)} experiments")
         
         results_list = []
-        total = sum(e["reps"] for e in experiments) * 6  # Account for 6 vehicle attempts (0 to +5)
+        total = sum(e.reps for e in experiments) * 6  # Account for 6 vehicle attempts (0 to +5)
         current_step = 0
         
         for exp in experiments:
@@ -98,13 +98,13 @@ def run_single_benchmark_background(task, settings, instance_data_file, bks_cost
                     original_num = working_instance['num_vehicles']
                     working_instance['num_vehicles'] = original_num + vehicle_attempt
                     working_instance['vehicle_capacities'] = [working_instance['capacity']] * working_instance['num_vehicles']
-                    task.log(f"Retrying {exp['name']} with {working_instance['num_vehicles']} vehicles (+{vehicle_attempt})")
+                    task.log(f"Retrying {exp.name} with {working_instance['num_vehicles']} vehicles (+{vehicle_attempt})")
                 
                 # Custom progress callback for background task
                 def bg_progress_callback(rep, reps):
                     nonlocal current_step
                     current_step += 1
-                    step_name = f"{exp['name']} | Rep {rep+1}/{reps}"
+                    step_name = f"{exp.name} | Rep {rep+1}/{reps}"
                     if vehicle_attempt > 0:
                         step_name += f" | Vehicles +{vehicle_attempt}"
                     task.update_progress(current_step, total, step_name)
@@ -114,22 +114,22 @@ def run_single_benchmark_background(task, settings, instance_data_file, bks_cost
                         raise InterruptedError("Benchmark stopped by user")
                 
                 try:
-                    data = run_experiment_reps(exp, working_instance, exp["reps"], bg_progress_callback)
+                    data = run_experiment_reps(exp, working_instance, exp.reps, bg_progress_callback)
                     
                     # If we found a solution, break out of vehicle retry loop
-                    if data["costs"]:
-                        result_row = build_result_row(exp, instance_meta, data["costs"], data["times"],
-                                                      data["neighbors_list"], data["best_routes"], bks_cost, data["checkpoints"])
-                        results_list.append(result_row)
-                        task.log(f"Solution found for {exp['name']} with {vehicle_attempt} additional vehicles")
+                    if data.costs:
+                        result_row = build_result_row(exp, instance_meta, data.costs, data.times,
+                                                      data.neighbors_list, data.best_routes, bks_cost, data.checkpoints)
+                        results_list.append(result_row.to_dict())
+                        task.log(f"Solution found for {exp.name} with {vehicle_attempt} additional vehicles")
                         break  # Exit vehicle retry loop since we found a solution
                     
                     # If last attempt with no solution yet
                     if vehicle_attempt == 5:
-                        result_row = build_result_row(exp, instance_meta, [], data["times"],
-                                                      data["neighbors_list"], None, bks_cost, data["checkpoints"])
-                        results_list.append(result_row)
-                        task.log(f"No solution found for {exp['name']} even with +5 vehicles", level="warning")
+                        result_row = build_result_row(exp, instance_meta, [], data.times,
+                                                      data.neighbors_list, None, bks_cost, data.checkpoints)
+                        results_list.append(result_row.to_dict())
+                        task.log(f"No solution found for {exp.name} even with +5 vehicles", level="warning")
                 
                 except InterruptedError:
                     task.set_completed(error="Benchmark stopped by user")

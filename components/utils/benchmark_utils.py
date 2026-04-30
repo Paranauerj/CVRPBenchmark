@@ -1,10 +1,12 @@
 import time
+from components.models import ExecutionResult
+
 
 def execute_and_measure(algorithm_func, instance_data, **kwargs):
     """
     Executes algorithm.
     Expected return from solver: (cost, accepted_neighbors, routes, history).
-    Returns dict with 'cpu_time', 'objective_value', 'accepted_neighbors', 'routes', 'history'.
+    Returns ExecutionResult with 'cpu_time', 'objective_value', 'accepted_neighbors', 'routes', 'history'.
     """
     start_cpu_time = time.process_time()
 
@@ -33,10 +35,10 @@ def execute_and_measure(algorithm_func, instance_data, **kwargs):
     else:
         print(f"    > No Solution Found (Time={cpu_time:.4f}s)")
 
-    return {
-        "cpu_time": cpu_time,
-        "objective_value": objective_value,
-        "accepted_neighbors": accepted_neighbors,
-        "routes": routes,
-        "history": history
-    }
+    return ExecutionResult(
+        cpu_time=cpu_time,
+        objective_value=objective_value,
+        accepted_neighbors=accepted_neighbors,
+        routes=routes,
+        history=history
+    )
