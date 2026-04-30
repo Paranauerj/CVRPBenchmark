@@ -1,4 +1,4 @@
-"""CVRP Benchmarker - Main Application with refactored UI."""
+"""CVRP Benchmarker - Main Application."""
 
 import streamlit as st
 import os
@@ -7,8 +7,8 @@ from uuid import uuid4
 from components.utils import instance_data_parser, solution_parser
 from components.execution import configurable_solver
 from components.ui.sidebar import render_shared_sidebar, FIRST_SOLUTIONS, METAHEURISTICS
-from components.execution.single_benchmark import run_single_benchmark, run_single_benchmark_background
-from components.execution.bulk_benchmark import run_bulk_benchmark, run_bulk_benchmark_background
+from components.execution.single_benchmark import run_single_benchmark
+from components.execution.bulk_benchmark import run_bulk_benchmark_background
 from components.execution.background_task import run_background_task
 from components.ui.results_display import display_results
 from components.ui.monitoring import render_monitor_page
@@ -159,8 +159,8 @@ with tab_single:
         
         # Display instance info
         if sel_inst:
-            # Uchoa instances don't include depot in num_nodes, Gaetano does
-            customers_count = num_nodes if (sel_source and sel_source.lower() == "uchoa") else (num_nodes - 1 if num_nodes else 0)
+            # Customers is always total nodes - 1 (the depot)
+            customers_count = (num_nodes - 1) if num_nodes else 0
             st.metric("📍 Customers", customers_count if customers_count else "?")
             if bks_cost:
                 st.metric("🎖️ BKS Cost", f"{bks_cost:.0f}")
@@ -206,25 +206,6 @@ with tab_single:
         else:
             st.text("Gap Target: N/A")
     
-    # Run options
-    st.divider()
-    col1, col2, col3 = st.columns([2, 1, 1])
-    
-    with col1:
-        run_sync = st.checkbox(
-            "⚡ Run Synchronously",
-            value=True,
-            help="Run in current session (page must stay open)"
-        )
-    
-    with col2:
-        st.text("")  # Spacing
-        st.text("")
-    
-    with col3:
-        st.text("")  # Spacing
-        st.text("")
-    
     # Run button
     if st.button(
         "🚀 Run Benchmark",
@@ -232,45 +213,25 @@ with tab_single:
         disabled=not (sel_inst and sidebar_settings["sel_fs"] and sidebar_settings["sel_mh"]),
         width='stretch'
     ):
-        if run_sync:
-            # Run synchronously (blocking)
-            with st.spinner("🔄 Running benchmark..."):
-                instance_data = instance_data_parser.load_vrp_instance(p_map[sel_inst]["vrp"])
-                
-                # Prepare instance data with selected vehicle count
-                if num_vehicles and num_vehicles != min_vehicles:
-                    instance_data['num_vehicles'] = num_vehicles
-                    instance_data['vehicle_capacities'] = [instance_data['capacity']] * num_vehicles
-                
-                benchmark_settings = _prepare_benchmark_settings(sidebar_settings, target_gap, reps)
-                
-                if sel_inst is not None:
-                    results_df, all_histories, all_best_routes = run_single_benchmark(instance_data, benchmark_settings, bks_cost, sel_inst)
-                    
-                    st.session_state.results_df = results_df
-                    st.session_state.all_histories = all_histories
-                    st.session_state.all_best_routes = all_best_routes
-                    st.session_state.instance_data = instance_data
-                    st.success("✅ Benchmark completed!")
-        else:
-            # Run asynchronously (background)
-            task_id = str(uuid4())[:8]
-            instance_file = p_map[sel_inst]["vrp"]
-            task_name = f"Single - {sel_inst}"
+        # Run synchronously (blocking) - Single benchmark is always sync
+        with st.spinner("🔄 Running benchmark..."):
+            instance_data = instance_data_parser.load_vrp_instance(p_map[sel_inst]["vrp"])
+            
+            # Prepare instance data with selected vehicle count
+            if num_vehicles and num_vehicles != min_vehicles:
+                instance_data['num_vehicles'] = num_vehicles
+                instance_data['vehicle_capacities'] = [instance_data['capacity']] * num_vehicles
             
             benchmark_settings = _prepare_benchmark_settings(sidebar_settings, target_gap, reps)
             
-            run_background_task(
-                run_single_benchmark_background,
-                task_id,
-                task_name,
-                benchmark_settings,
-                instance_file,
-                bks_cost
-            )
-            
-            st.success(f"✅ Benchmark started in background! Task ID: `{task_id}`")
-            st.info("📊 View progress in the **Monitor** tab")
+            if sel_inst is not None:
+                results_df, all_histories, all_best_routes = run_single_benchmark(instance_data, benchmark_settings, bks_cost, sel_inst)
+                
+                st.session_state.results_df = results_df
+                st.session_state.all_histories = all_histories
+                st.session_state.all_best_routes = all_best_routes
+                st.session_state.instance_data = instance_data
+                st.success("✅ Benchmark completed!")
     
     # Results display
     st.divider()
@@ -333,18 +294,6 @@ with tab_bulk:
                     max_value=16,
                     value=4,
                     help="Number of instances to process simultaneously"
-                )
-            
-            # Run options
-            st.divider()
-            
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                bg_checkbox = st.checkbox(
-                    "⚡ Run in Background",
-                    value=True,
-                    disabled=True,
-                    help="Benchmark runs in background (always enabled for bulk)"
                 )
             
             # Run button

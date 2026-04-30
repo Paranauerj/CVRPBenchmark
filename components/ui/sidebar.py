@@ -115,7 +115,7 @@ def render_shared_sidebar():
             min_value=20, 
             max_value=10000, 
             value=100,
-            help="Stop if no improvement for N accepted neighbors"
+            help="Stop if no improvement for N accepted neighbors. An 'accepted neighbor' is a move in the local search that was accepted (improving or allowed by metaheuristic)."
         ) if st.checkbox("Stop on No Improvement (Neighbors)", value=False) else None
     
     return {

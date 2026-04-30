@@ -39,7 +39,7 @@ class SmartLimitCallback:
         self.last_improvement_neighbors = 0
         self.start_time = time.time()
         
-        # --- NEW: History Tracking ---
+        # History Tracking
         # List of tuples: (time_elapsed, accepted_neighbors, cost)
         self.history = []
 
@@ -49,20 +49,15 @@ class SmartLimitCallback:
         except:
             return 
         
-        # Record every solution found? Or just improvements?
-        # Usually recording every solution gives a better "convergence" curve,
-        # but recording only improvements is cleaner for "best so far".
-        # Let's record improvements to show the "step" function.
-        
         current_time = time.time() - self.start_time
-        current_iters = self.solver.AcceptedNeighbors()
+        current_neighbors = self.solver.AcceptedNeighbors()
 
         if current_cost < self.best_objective:
             self.best_objective = current_cost
             self.last_improvement_time = time.time()
-            self.last_improvement_neighbors = current_iters
+            self.last_improvement_neighbors = current_neighbors
             # Record Improvement
-            self.history.append((current_time, current_iters, current_cost))
+            self.history.append((current_time, current_neighbors, current_cost))
             
     def check_limit_callback(self):
         if self.target_cost is not None and self.best_objective <= self.target_cost:
@@ -99,9 +94,16 @@ def solve_cvrp(data,
     search_parameters.first_solution_strategy = first_solution_strategy
     search_parameters.local_search_metaheuristic = local_search_metaheuristic
     
-    if time_limit_seconds is not None: search_parameters.time_limit.seconds = int(time_limit_seconds)
-    if solution_limit is not None: search_parameters.solution_limit = int(solution_limit)
-    if lns_time_limit_seconds is not None: search_parameters.lns_time_limit.seconds = int(lns_time_limit_seconds)
+    if time_limit_seconds is not None:
+        search_parameters.time_limit.seconds = int(time_limit_seconds)
+        search_parameters.time_limit.nanos = int((time_limit_seconds - int(time_limit_seconds)) * 1e9)
+        
+    if solution_limit is not None:
+        search_parameters.solution_limit = int(solution_limit)
+        
+    if lns_time_limit_seconds is not None:
+        search_parameters.lns_time_limit.seconds = int(lns_time_limit_seconds)
+        search_parameters.lns_time_limit.nanos = int((lns_time_limit_seconds - int(lns_time_limit_seconds)) * 1e9)
 
     routing.CloseModelWithParameters(search_parameters)
 

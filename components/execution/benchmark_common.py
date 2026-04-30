@@ -27,7 +27,7 @@ def prepare_experiments(settings) -> list[ExperimentConfig]:
                 "time_limit_seconds": settings["time_limit"],
                 "solution_limit": settings["sol_limit"],
                 "lns_time_limit_seconds": settings["lns_limit"],
-                "target_cost": settings.get("target_gap"),
+                "target_gap_percent": settings.get("target_gap"), # Store as percentage
                 "no_improvement_limit": settings["no_improv"],
                 "no_improvement_neighbors_limit": settings["no_improv_iter"]
             }
@@ -112,7 +112,7 @@ def build_result_row(exp: ExperimentConfig, instance_meta: InstanceMetadata,
     )
 
 
-def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, progress_callback=None) -> RunStatistics:
+def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, bks_cost=None, progress_callback=None) -> RunStatistics:
     """Run an experiment for given repetitions and return collected data."""
     costs, times, neighbors_list, best_routes = [], [], [], None
     checkpoint_collectors = {t: [] for t in TIME_CHECKPOINTS}
@@ -124,6 +124,13 @@ def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, progress_cal
         
         cur_kw = exp.kwargs.copy()
         cur_kw["random_seed"] = random.randint(0, 2**31 - 1)
+        
+        # Calculate target_cost from percentage and BKS if available
+        target_gap_pct = cur_kw.pop("target_gap_percent", None)
+        if target_gap_pct is not None and bks_cost is not None:
+            cur_kw["target_cost"] = bks_cost * (1 + target_gap_pct / 100)
+        else:
+            cur_kw["target_cost"] = None
         
         res = execute_and_measure(exp.func, instance_data, **cur_kw)
         
@@ -154,3 +161,4 @@ def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, progress_cal
         checkpoints=checkpoint_collectors,
         all_histories=all_histories
     )
+
