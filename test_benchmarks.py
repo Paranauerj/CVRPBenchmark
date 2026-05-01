@@ -3,11 +3,6 @@ Benchmark Validation Test Script
 Verifies Target Gap logic and Time Checkpoint reporting.
 """
 
-# TODO: Create a py file to do the benchmark by chunks => every 10 instances it stores the values in a file and at the end of execution
-# unites all those results into a single one (gaetano instances - separate folder for the results and once its done, delete all temporary files)
-# if somehow the loading fails, use the latest file (order by name, number, idk) to resume (replace the latest by the new execution so we dont have
-# corrupted files)
-
 import os
 import sys
 from components.utils import instance_data_parser, solution_parser
