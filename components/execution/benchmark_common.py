@@ -2,6 +2,7 @@
 
 import statistics
 import random
+import copy
 from components.utils.benchmark_utils import execute_and_measure
 from components.utils.helpers import get_cost_at_time, parse_gaetano_metadata
 from components.models import (
@@ -161,4 +162,43 @@ def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, bks_cost=Non
         checkpoints=checkpoint_collectors,
         all_histories=all_histories
     )
+
+def run_experiment_with_vehicle_retry(exp: ExperimentConfig, inst_data, bks_val, instance_meta, 
+                                      max_retries=5, log_fn=None, progress_fn=None):
+    """
+    Core logic for running one experiment with vehicle retries.
+    Returns: (dict result_row, bool found_solution, int final_vehicle_attempt)
+    """
+    for vehicle_attempt in range(max_retries + 1):
+        working_instance = inst_data
+        current_meta = instance_meta
+        
+        if vehicle_attempt > 0:
+            working_instance = copy.deepcopy(inst_data)
+            original_num = working_instance['num_vehicles']
+            new_num = original_num + vehicle_attempt
+            working_instance['num_vehicles'] = new_num
+            working_instance['vehicle_capacities'] = [working_instance['capacity']] * working_instance['num_vehicles']
+            
+            # Create a copy of meta to update the reported vehicle count
+            current_meta = copy.copy(instance_meta)
+            current_meta.vehicles = new_num
+            
+            if log_fn:
+                log_fn(f"Retrying {instance_meta.name} | {exp.name} with {new_num} vehicles (+{vehicle_attempt})")
+
+        # progress_fn needs to handle rep, reps, and vehicle_attempt
+        def wrapped_progress(rep, reps):
+            if progress_fn:
+                progress_fn(rep, reps, vehicle_attempt)
+
+        data = run_experiment_reps(exp, working_instance, exp.reps, bks_val, wrapped_progress)
+        
+        # If we found a solution, or if this was the last attempt
+        if data.costs or vehicle_attempt == max_retries:
+            result_row = build_result_row(exp, current_meta, data.costs, data.times,
+                                          data.neighbors_list, data.best_routes, bks_val, data.checkpoints)
+            return result_row.to_dict(), bool(data.costs), vehicle_attempt
+            
+    return None, False, 0
 

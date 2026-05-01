@@ -1,6 +1,7 @@
 import os
 import glob
 import json
+import copy
 import pandas as pd
 import threading
 from datetime import datetime
@@ -13,7 +14,7 @@ from components.utils import instance_data_parser, solution_parser
 from components.execution import configurable_solver
 from components.execution.benchmark_common import (
     extract_instance_metadata, build_result_row, 
-    run_experiment_reps
+    run_experiment_reps, run_experiment_with_vehicle_retry
 )
 from components.models import ExperimentConfig
 from components.ui.sidebar import FIRST_SOLUTIONS, METAHEURISTICS
@@ -28,22 +29,24 @@ RESULTS_DIR = "gaetano_chunk_results"
 CHUNK_SIZE = 10
 FINAL_OUTPUT_DIR = "server_output"
 NUM_PARALLEL = 2
-MAX_INSTANCES = None # Set to an integer to limit the total number of instances (e.g., 50)
+MAX_INSTANCES = 2 # Set to an integer to limit the total number of instances (e.g., 50)
 
 # Professional Benchmark Configuration
 # Use OR-Tools constants directly here
 SELECTED_FS = [
     RE.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION,
-    # RE.FirstSolutionStrategy.SAVINGS,
+    RE.FirstSolutionStrategy.SAVINGS,
+    RE.FirstSolutionStrategy.CHRISTOFIDES
 ]
 
 SELECTED_MH = [
     RE.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH,
-    # RE.LocalSearchMetaheuristic.TABU_SEARCH,
+    RE.LocalSearchMetaheuristic.TABU_SEARCH,
+    RE.LocalSearchMetaheuristic.SIMULATED_ANNEALING
 ]
 
 BENCHMARK_PARAMS = {
-    "time_limit_seconds": 20,
+    "time_limit_seconds": 6,
     "solution_limit": None,
     "lns_time_limit_seconds": None,
     "no_improvement_limit": None,
@@ -104,11 +107,21 @@ def process_instance(vrp_path, experiments):
         results = []
         for exp in experiments:
             try:
-                # Pass bks_val if available
-                data = run_experiment_reps(exp, inst_data, exp.reps, bks_val)
-                result_row = build_result_row(exp, instance_meta, data.costs, data.times,
-                                              data.neighbors_list, data.best_routes, bks_val, data.checkpoints)
-                results.append(result_row.to_dict())
+                # Use shared logic from benchmark_common
+                result_row_dict, found, final_attempt = run_experiment_with_vehicle_retry(
+                    exp, inst_data, bks_val, instance_meta, 
+                    max_retries=5, 
+                    log_fn=print
+                )
+                
+                if result_row_dict:
+                    results.append(result_row_dict)
+                    if found:
+                        if final_attempt > 0:
+                            print(f"    ✓ Solution found for {inst_name} | {exp.name} with +{final_attempt} vehicles.")
+                    else:
+                        print(f"    ✗ No solution found for {inst_name} | {exp.name} even with +5 vehicles.")
+                
             except Exception as e:
                 print(f"    Error in experiment {exp.name} for {inst_name}: {e}")
         
