@@ -170,13 +170,15 @@ def plot_convergence_comparison(all_histories, exp_names, title="Convergence Com
     ax1.set_xlabel('Time (seconds)')
     ax1.set_ylabel('Best Cost')
     ax1.set_title('Cost Over Time')
-    ax1.legend(loc='best', fontsize=9)
+    if ax1.get_legend_handles_labels()[0]:  # Only show legend if there are items
+        ax1.legend(loc='best', fontsize=9)
     ax1.grid(True, alpha=0.3)
     
     ax2.set_xlabel('Accepted Neighbors')
     ax2.set_ylabel('Best Cost')
     ax2.set_title('Cost Over Accepted Neighbors')
-    ax2.legend(loc='best', fontsize=9)
+    if ax2.get_legend_handles_labels()[0]:  # Only show legend if there are items
+        ax2.legend(loc='best', fontsize=9)
     ax2.grid(True, alpha=0.3)
     
     # Increase space between subplots
