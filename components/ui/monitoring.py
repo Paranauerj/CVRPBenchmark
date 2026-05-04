@@ -61,7 +61,7 @@ def show_delete_confirmation(task_id: str, task_name: str, task_manager: TaskMan
     
     col_yes, col_no = st.columns(2)
     with col_yes:
-        if st.button("✅ Yes, Delete", use_container_width=True, key=f"confirm_delete_{task_id}"):
+        if st.button("✅ Yes, Delete", width='stretch', key=f"confirm_delete_{task_id}"):
             if task_manager.delete_task(task_id):
                 st.success(f"Task '{task_name}' deleted successfully")
                 st.rerun()
@@ -69,7 +69,7 @@ def show_delete_confirmation(task_id: str, task_name: str, task_manager: TaskMan
                 st.error(f"Failed to delete task '{task_name}'")
     
     with col_no:
-        if st.button("❌ Cancel", use_container_width=True, key=f"cancel_delete_{task_id}"):
+        if st.button("❌ Cancel", width='stretch', key=f"cancel_delete_{task_id}"):
             st.rerun()
 
 
@@ -121,7 +121,7 @@ def render_task_card(task: TaskInfo, task_manager: TaskManager):
     
     with action_col1:
         if task.status == "running":
-            if st.button("⏹️ Stop", key=f"stop_{task.task_id}", use_container_width=True):
+            if st.button("⏹️ Stop", key=f"stop_{task.task_id}", width='stretch'):
                 if task_manager.stop_task(task.task_id):
                     st.success(f"Stop signal sent to task {task.task_id}")
                     st.rerun()
@@ -130,7 +130,7 @@ def render_task_card(task: TaskInfo, task_manager: TaskManager):
     
     with action_col2:
         if task.log_file:
-            if st.button("📋 Logs", key=f"logs_{task.task_id}", use_container_width=True):
+            if st.button("📋 Logs", key=f"logs_{task.task_id}", width='stretch'):
                 st.session_state['view_log_file'] = task.log_file
                 st.rerun()
     
@@ -145,14 +145,14 @@ def render_task_card(task: TaskInfo, task_manager: TaskManager):
                     file_name=task.results_file.split('/')[-1],
                     mime="application/octet-stream",
                     key=f"download_{task.task_id}",
-                    use_container_width=True
+                    width='stretch'
                 )
             except Exception as e:
                 st.error(f"Error loading file: {e}", icon="❌")
     
     with action_col4:
         if task.status in ("completed", "failed", "stopped"):
-            if st.button("🗑️ Delete", key=f"delete_{task.task_id}", use_container_width=True):
+            if st.button("🗑️ Delete", key=f"delete_{task.task_id}", width='stretch'):
                 show_delete_confirmation(task.task_id, task.name, task_manager)
     
     st.divider()
@@ -172,7 +172,7 @@ def render_monitor_page():
     col_refresh, col_interval = st.columns([1, 2])
     
     with col_refresh:
-        if st.button("🔄 Refresh", use_container_width=True):
+        if st.button("🔄 Refresh", width='stretch'):
             st.rerun()
     
     with col_interval:
@@ -239,10 +239,10 @@ def render_monitor_page():
                 data=logs,
                 file_name=f"benchmark_{st.session_state['view_log_file'].split('/')[-1]}",
                 mime="text/plain",
-                use_container_width=True
+                width='stretch'
             )
             
-            if st.button("Close", key="close_logs", use_container_width=True):
+            if st.button("Close", key="close_logs", width='stretch'):
                 del st.session_state['view_log_file']
                 st.rerun()
         except FileNotFoundError:

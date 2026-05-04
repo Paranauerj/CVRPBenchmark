@@ -12,7 +12,7 @@ from components import constants as C
 
 
 # Time checkpoints for tracking convergence
-TIME_CHECKPOINTS = [5, 10, 15, 20, 30, 60]
+TIME_CHECKPOINTS = [1, 5, 10, 15, 20, 30, 60]
 
 
 def prepare_experiments(settings) -> list[ExperimentConfig]:
@@ -67,8 +67,9 @@ def extract_instance_metadata(instance_data, instance_name) -> InstanceMetadata:
 
 def build_result_row(exp: ExperimentConfig, instance_meta: InstanceMetadata, 
                      costs, times, neighbors_list, best_routes, bks_cost, 
-                     checkpoint_data) -> BenchmarkResult:
+                     checkpoint_data, time_checkpoints=TIME_CHECKPOINTS) -> BenchmarkResult:
     """Build a result row with all standard columns."""
+    
     if costs:
         best = min(costs)
         avg = statistics.mean(costs)
@@ -81,7 +82,7 @@ def build_result_row(exp: ExperimentConfig, instance_meta: InstanceMetadata,
     
     # Build checkpoint columns dictionary
     checkpoints = {}
-    for t_chk in TIME_CHECKPOINTS:
+    for t_chk in time_checkpoints:
         costs_at_t = checkpoint_data.get(t_chk, [])
         if costs_at_t:
             checkpoints[C.get_checkpoint_avg_cost_col(t_chk)] = statistics.mean(costs_at_t)
@@ -113,10 +114,11 @@ def build_result_row(exp: ExperimentConfig, instance_meta: InstanceMetadata,
     )
 
 
-def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, bks_cost=None, progress_callback=None) -> RunStatistics:
+def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, bks_cost=None, progress_callback=None, time_checkpoints=TIME_CHECKPOINTS) -> RunStatistics:
     """Run an experiment for given repetitions and return collected data."""
+    
     costs, times, neighbors_list, best_routes = [], [], [], None
-    checkpoint_collectors = {t: [] for t in TIME_CHECKPOINTS}
+    checkpoint_collectors = {t: [] for t in time_checkpoints}
     all_histories = []  # Store full convergence history from each run
     
     for rep in range(reps):
@@ -149,7 +151,7 @@ def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, bks_cost=Non
             # Store full history for convergence visualization
             all_histories.append(res.history)
             
-            for t_chk in TIME_CHECKPOINTS:
+            for t_chk in time_checkpoints:
                 cost_at_t = get_cost_at_time(res.history, t_chk)
                 if cost_at_t is not None:
                     checkpoint_collectors[t_chk].append(cost_at_t)
@@ -164,11 +166,12 @@ def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, bks_cost=Non
     )
 
 def run_experiment_with_vehicle_retry(exp: ExperimentConfig, inst_data, bks_val, instance_meta, 
-                                      max_retries=5, log_fn=None, progress_fn=None):
+                                      max_retries=5, log_fn=None, progress_fn=None, time_checkpoints=TIME_CHECKPOINTS):
     """
     Core logic for running one experiment with vehicle retries.
     Returns: (dict result_row, bool found_solution, int final_vehicle_attempt)
     """
+    
     for vehicle_attempt in range(max_retries + 1):
         working_instance = inst_data
         current_meta = instance_meta
@@ -192,12 +195,12 @@ def run_experiment_with_vehicle_retry(exp: ExperimentConfig, inst_data, bks_val,
             if progress_fn:
                 progress_fn(rep, reps, vehicle_attempt)
 
-        data = run_experiment_reps(exp, working_instance, exp.reps, bks_val, wrapped_progress)
+        data = run_experiment_reps(exp, working_instance, exp.reps, bks_val, wrapped_progress, time_checkpoints)
         
         # If we found a solution, or if this was the last attempt
         if data.costs or vehicle_attempt == max_retries:
             result_row = build_result_row(exp, current_meta, data.costs, data.times,
-                                          data.neighbors_list, data.best_routes, bks_val, data.checkpoints)
+                                          data.neighbors_list, data.best_routes, bks_val, data.checkpoints, time_checkpoints)
             return result_row.to_dict(), bool(data.costs), vehicle_attempt
             
     return None, False, 0

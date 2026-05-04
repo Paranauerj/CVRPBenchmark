@@ -44,7 +44,7 @@ def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histo
     if "CPU Time (s)" in df_display.columns:
         column_config["CPU Time (s)"] = st.column_config.NumberColumn("CPU Time (s)", format="%.6f")
     
-    st.dataframe(df_display, use_container_width=True, column_config=column_config if column_config else None)
+    st.dataframe(df_display, width='stretch', column_config=column_config if column_config else None)
 
     # 2. Convergence Plots
     st.subheader("Convergence Analysis")

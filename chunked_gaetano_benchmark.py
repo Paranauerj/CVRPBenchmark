@@ -31,6 +31,9 @@ FINAL_OUTPUT_DIR = "server_output"
 NUM_PARALLEL = 2
 MAX_INSTANCES = 2 # Set to an integer to limit the total number of instances (e.g., 50)
 
+# Custom time checkpoints for convergence analysis
+TIME_CHECKPOINTS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,20,25,30,35,40,45,50,55,60]
+
 # Professional Benchmark Configuration
 # Use OR-Tools constants directly here
 SELECTED_FS = [
@@ -111,7 +114,8 @@ def process_instance(vrp_path, experiments):
                 result_row_dict, found, final_attempt = run_experiment_with_vehicle_retry(
                     exp, inst_data, bks_val, instance_meta, 
                     max_retries=5, 
-                    log_fn=print
+                    log_fn=print,
+                    time_checkpoints=TIME_CHECKPOINTS
                 )
                 
                 if result_row_dict:

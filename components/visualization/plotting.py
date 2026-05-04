@@ -210,7 +210,7 @@ def plot_single_benchmark_results(instance_data, all_histories, all_best_routes,
     # Make convergence analysis even bigger (95% width)
     col_l, col_m, col_r = st.columns([0.025, 0.95, 0.025])
     with col_m:
-        st.pyplot(fig_conv, use_container_width=True)
+        st.pyplot(fig_conv, width='stretch')
     
     # Add spacing between sections
     st.markdown("<br><br>", unsafe_allow_html=True)
@@ -244,6 +244,6 @@ def plot_single_benchmark_results(instance_data, all_histories, all_best_routes,
                     # Realign to the beginning (left) and make it smaller (50% width)
                     col_l2, col_r2 = st.columns([0.5, 0.5])
                     with col_l2:
-                        st.pyplot(fig_routes, use_container_width=True)
+                        st.pyplot(fig_routes, width='stretch')
                 else:
                     st.info(f"No route data for {exp_name}")
