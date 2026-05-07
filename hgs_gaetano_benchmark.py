@@ -10,6 +10,10 @@ from components import constants as C
 INSTANCES_DIR = "instances/gaetano"
 RESULTS_DIR = "hgs_gaetano_results"
 MAX_INSTANCES = None 
+SAVE_SOLUTIONS = True  # Flag to generate .sol files
+NUM_PARALLEL = 4       # Number of concurrent workers
+CHUNK_SIZE = 10        # Number of instances per chunk
+
 
 BENCHMARK_PARAMS = {
     "time_limit_seconds": 10,
@@ -47,6 +51,25 @@ def process_instance(vrp_path, experiments):
         avg_cost = sum(data.costs) / len(data.costs)
         best_cost = min(data.costs)
         avg_time = sum(data.times) / len(data.times)
+
+        # Save .sol file if requested and it's better than existing or no existing
+        if SAVE_SOLUTIONS and data.best_routes:
+            sol_path = vrp_path.replace(".vrp", ".sol")
+            save_needed = True
+            
+            if os.path.exists(sol_path):
+                try:
+                    existing_cost = solution_parser.parse_solution_file(sol_path)
+                    if existing_cost is not None and best_cost >= existing_cost:
+                        save_needed = False
+                except:
+                    # If error parsing, assume we should overwrite
+                    pass
+            
+            if save_needed:
+                action = "Updating" if os.path.exists(sol_path) else "Saving new"
+                print(f"  [SOL] {action} best solution for {inst_name}: {best_cost}")
+                solution_parser.save_solution_file(sol_path, data.best_routes, best_cost)
         
         result = {
             C.COL_INSTANCE: inst_name,
@@ -67,7 +90,9 @@ def main():
         name="HGS Gaetano Benchmark",
         instances_dir=INSTANCES_DIR,
         results_dir=RESULTS_DIR,
-        max_instances=MAX_INSTANCES
+        max_instances=MAX_INSTANCES,
+        num_parallel=NUM_PARALLEL,
+        chunk_size=CHUNK_SIZE
     )
     
     runner.run(
