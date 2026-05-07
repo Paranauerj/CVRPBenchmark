@@ -18,6 +18,7 @@ COL_CAPACITY = "Capacity"
 # ============================================================================
 # ALGORITHM COLUMNS
 # ============================================================================
+COL_SOLVER = "Solver"
 COL_FIRST_SOLUTION = "First Solution"
 COL_METAHEURISTIC = "Metaheuristic"
 
@@ -38,7 +39,8 @@ COL_BEST_GAP = "Best Gap (%)"
 COL_AVG_GAP = "Avg Gap (%)"
 
 # Time metrics
-COL_AVG_CPU_TIME = "Avg CPU Time (s)"
+COL_AVG_CPU_TIME = "Avg Time (s)"
+COL_TIME_TO_TARGET = "Time to Target (s)"
 
 # ============================================================================
 # TIME CHECKPOINT COLUMNS (Dynamic - use template)
@@ -80,7 +82,7 @@ VRPLIB_KEY_NODE_COORD = "node_coord"
 # RESULT AGGREGATION GROUPS
 # ============================================================================
 
-ALGORITHM_COLS = [COL_METAHEURISTIC, COL_FIRST_SOLUTION]
+ALGORITHM_COLS = [COL_SOLVER, COL_METAHEURISTIC, COL_FIRST_SOLUTION]
 METADATA_COLS = [
     COL_INSTANCE,
     COL_DEPOT_LAYOUT,
@@ -94,7 +96,7 @@ METADATA_COLS = [
 ]
 COST_COLS = [COL_BEST_COST, COL_AVG_COST, COL_BKS_COST]
 GAP_COLS = [COL_BEST_GAP, COL_AVG_GAP]
-TIME_COLS = [COL_AVG_CPU_TIME]
+TIME_COLS = [COL_AVG_CPU_TIME, COL_TIME_TO_TARGET]
 COUNT_COLS = [COL_REPETITIONS]
 
 # All base columns (without checkpoints)
@@ -141,7 +143,7 @@ def get_display_columns(include_gaps: bool = True, include_time: bool = True) ->
     Returns:
         List of column names to display
     """
-    cols = ALGORITHM_COLS + DISPLAY_COLS_COST
+    cols = [COL_SOLVER] + [COL_METAHEURISTIC, COL_FIRST_SOLUTION] + DISPLAY_COLS_COST
     
     if include_gaps:
         cols.extend(GAP_COLS)
@@ -173,7 +175,7 @@ def get_column_config_for_display(display_columns: list[str]) -> dict:
             config[col] = st.column_config.NumberColumn(col, format=FORMAT_COST)
         elif col in [COL_BEST_GAP, COL_AVG_GAP]:
             config[col] = st.column_config.NumberColumn(col, format=FORMAT_GAP)
-        elif col == COL_AVG_CPU_TIME:
+        elif col in [COL_AVG_CPU_TIME, COL_TIME_TO_TARGET]:
             config[col] = st.column_config.NumberColumn(col, format=FORMAT_TIME)
     
     return config

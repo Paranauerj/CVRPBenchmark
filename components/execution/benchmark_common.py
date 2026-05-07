@@ -11,6 +11,8 @@ from components.models import (
 from components import constants as C
 
 
+from components.execution.hygese_solver import solve_hgs
+
 # Time checkpoints for tracking convergence
 TIME_CHECKPOINTS = [1, 5, 10, 15, 20, 30, 60]
 
@@ -18,28 +20,51 @@ TIME_CHECKPOINTS = [1, 5, 10, 15, 20, 30, 60]
 def prepare_experiments(settings) -> list[ExperimentConfig]:
     """Prepare experiment configurations from settings."""
     experiments = []
-    for fs in settings["sel_fs"]:
-        for mh in settings["sel_mh"]:
-            fs_label = fs.split('(')[0].strip()
-            mh_label = mh.split('(')[0].strip()
-            kw = {
-                "first_solution_strategy": settings["fs_enum"][fs],
-                "local_search_metaheuristic": settings["mh_enum"][mh],
-                "time_limit_seconds": settings["time_limit"],
-                "solution_limit": settings["sol_limit"],
-                "lns_time_limit_seconds": settings["lns_limit"],
-                "target_gap_percent": settings.get("target_gap"), # Store as percentage
-                "no_improvement_limit": settings["no_improv"],
-                "no_improvement_neighbors_limit": settings["no_improv_iter"]
-            }
-            experiments.append(ExperimentConfig(
-                name=f"{mh_label} [{fs_label}]",
-                fs_label=fs_label,
-                mh_label=mh_label,
-                func=settings["solver_func"],
-                kwargs=kw,
-                reps=settings["reps"]
-            ))
+    engine = settings.get("engine", "ortools")
+    
+    if engine == "ortools":
+        for fs in settings["sel_fs"]:
+            for mh in settings["sel_mh"]:
+                fs_label = fs.split('(')[0].strip()
+                mh_label = mh.split('(')[0].strip()
+                kw = {
+                    "first_solution_strategy": settings["fs_enum"][fs],
+                    "local_search_metaheuristic": settings["mh_enum"][mh],
+                    "time_limit_seconds": settings["time_limit"],
+                    "solution_limit": settings["sol_limit"],
+                    "lns_time_limit_seconds": settings["lns_limit"],
+                    "target_gap_percent": settings.get("target_gap"), # Store as percentage
+                    "no_improvement_limit": settings["no_improv"],
+                    "no_improvement_neighbors_limit": settings["no_improv_iter"],
+                    "continue_after_target": settings.get("continue_after_gap", False)
+                }
+                experiments.append(ExperimentConfig(
+                    name=f"{mh_label} [{fs_label}]",
+                    fs_label=fs_label,
+                    mh_label=mh_label,
+                    func=settings["solver_func"],
+                    kwargs=kw,
+                    reps=settings["reps"]
+                ))
+    elif engine == "hgs":
+        # HGS uses its own internal logic, usually one experiment per run
+        kw = {
+            "time_limit_seconds": settings["time_limit"],
+            "no_improvement_limit_iterations": settings["no_improv_iter"],
+            "target_gap_percent": settings.get("target_gap")
+        }
+        # Include HGS specific parameters
+        kw.update(settings.get("hgs_params", {}))
+        
+        experiments.append(ExperimentConfig(
+            name="HGS-CVRP",
+            fs_label="HGS-CVRP",
+            mh_label="HGS-CVRP",
+            func=solve_hgs,
+            kwargs=kw,
+            reps=settings["reps"]
+        ))
+        
     return experiments
 
 
@@ -67,7 +92,8 @@ def extract_instance_metadata(instance_data, instance_name) -> InstanceMetadata:
 
 def build_result_row(exp: ExperimentConfig, instance_meta: InstanceMetadata, 
                      costs, times, neighbors_list, best_routes, bks_cost, 
-                     checkpoint_data, time_checkpoints=TIME_CHECKPOINTS) -> BenchmarkResult:
+                     checkpoint_data, time_checkpoints=TIME_CHECKPOINTS,
+                     time_to_target_list=None, engine="ortools") -> BenchmarkResult:
     """Build a result row with all standard columns."""
     
     if costs:
@@ -80,6 +106,13 @@ def build_result_row(exp: ExperimentConfig, instance_meta: InstanceMetadata,
     best_gap = ((best - bks_cost) / bks_cost * 100) if (bks_cost and best) else None
     avg_gap = ((avg - bks_cost) / bks_cost * 100) if (bks_cost and avg) else None
     
+    avg_time_to_target = None
+    if time_to_target_list:
+        # Filter out None values
+        valid_ttt = [t for t in time_to_target_list if t is not None]
+        if valid_ttt:
+            avg_time_to_target = statistics.mean(valid_ttt)
+
     # Build checkpoint columns dictionary
     checkpoints = {}
     for t_chk in time_checkpoints:
@@ -91,6 +124,9 @@ def build_result_row(exp: ExperimentConfig, instance_meta: InstanceMetadata,
             checkpoints[C.get_checkpoint_avg_cost_col(t_chk)] = None
             checkpoints[C.get_checkpoint_best_cost_col(t_chk)] = None
     
+    # Use the number of routes in the best solution as the vehicle count
+    used_vehicles = len(best_routes) if best_routes else instance_meta.vehicles
+
     return BenchmarkResult(
         instance=instance_meta.name,
         depot_layout=instance_meta.depot_layout,
@@ -99,10 +135,11 @@ def build_result_row(exp: ExperimentConfig, instance_meta: InstanceMetadata,
         route_class=instance_meta.route_class,
         climate=instance_meta.climate,
         customers=instance_meta.customers,
-        vehicles=instance_meta.vehicles,
+        vehicles=used_vehicles,
         capacity=instance_meta.capacity,
         first_solution=exp.fs_label,
         metaheuristic=exp.mh_label,
+        engine=engine,
         repetitions=exp.reps,
         avg_cost=avg,
         best_cost=best,
@@ -110,6 +147,7 @@ def build_result_row(exp: ExperimentConfig, instance_meta: InstanceMetadata,
         best_gap_percent=best_gap,
         avg_gap_percent=avg_gap,
         avg_cpu_time=statistics.mean(times) if times else None,
+        avg_time_to_target=avg_time_to_target,
         checkpoints=checkpoints
     )
 
@@ -118,8 +156,10 @@ def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, bks_cost=Non
     """Run an experiment for given repetitions and return collected data."""
     
     costs, times, neighbors_list, best_routes = [], [], [], None
+    best_cost_found = float('inf')
     checkpoint_collectors = {t: [] for t in time_checkpoints}
     all_histories = []  # Store full convergence history from each run
+    ttt_list = []  # Time to target list
     
     for rep in range(reps):
         if progress_callback:
@@ -141,11 +181,19 @@ def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, bks_cost=Non
             times.append(res.cpu_time)
         if res.objective_value is not None:
             costs.append(res.objective_value)
-            if not best_routes:
+            
+            # Keep track of the BEST routes found across all repetitions
+            if res.objective_value < best_cost_found:
+                best_cost_found = res.objective_value
                 best_routes = res.routes
+                
         if res.accepted_neighbors is not None:
             neighbors_list.append(res.accepted_neighbors)
         
+        # Track time to target
+        if hasattr(res, 'time_to_target'):
+             ttt_list.append(res.time_to_target)
+
         # Collect costs at time checkpoints
         if res.history:
             # Store full history for convergence visualization
@@ -162,11 +210,13 @@ def run_experiment_reps(exp: ExperimentConfig, instance_data, reps, bks_cost=Non
         neighbors_list=neighbors_list,
         best_routes=best_routes,
         checkpoints=checkpoint_collectors,
-        all_histories=all_histories
+        all_histories=all_histories,
+        time_to_target_list=ttt_list
     )
 
 def run_experiment_with_vehicle_retry(exp: ExperimentConfig, inst_data, bks_val, instance_meta, 
-                                      max_retries=5, log_fn=None, progress_fn=None, time_checkpoints=TIME_CHECKPOINTS):
+                                      max_retries=5, log_fn=None, progress_fn=None, time_checkpoints=TIME_CHECKPOINTS,
+                                      engine="ortools"):
     """
     Core logic for running one experiment with vehicle retries.
     Returns: (dict result_row, bool found_solution, int final_vehicle_attempt)
@@ -200,7 +250,8 @@ def run_experiment_with_vehicle_retry(exp: ExperimentConfig, inst_data, bks_val,
         # If we found a solution, or if this was the last attempt
         if data.costs or vehicle_attempt == max_retries:
             result_row = build_result_row(exp, current_meta, data.costs, data.times,
-                                          data.neighbors_list, data.best_routes, bks_val, data.checkpoints, time_checkpoints)
+                                          data.neighbors_list, data.best_routes, bks_val, data.checkpoints, 
+                                          time_checkpoints, data.time_to_target_list, engine=engine)
             return result_row.to_dict(), bool(data.costs), vehicle_attempt
             
     return None, False, 0

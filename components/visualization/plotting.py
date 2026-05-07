@@ -7,11 +7,11 @@ import streamlit as st
 from collections import defaultdict
 
 
-def plot_routes(customers, routes, depot_pos=(0, 0), title="Routes"):
+def plot_routes(customers, routes, depot_pos=(0, 0), title="Routes", figsize=(8, 6)):
     """
     Plot routes on 2D space.
     """
-    fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
     
     if not customers or not routes:
         ax.text(0.5, 0.5, 'No route data available', ha='center', va='center', transform=ax.transAxes)

@@ -57,6 +57,7 @@ def get_instance_sources():
 def _prepare_benchmark_settings(sidebar_settings, target_gap=None, reps=1):
     """Prepare common benchmark settings."""
     return {
+        "engine": sidebar_settings.get("engine", "ortools"),
         "sel_fs": sidebar_settings["sel_fs"],
         "sel_mh": sidebar_settings["sel_mh"],
         "fs_enum": FIRST_SOLUTIONS,
@@ -67,6 +68,8 @@ def _prepare_benchmark_settings(sidebar_settings, target_gap=None, reps=1):
         "lns_limit": sidebar_settings["lns_limit"],
         "no_improv": sidebar_settings["no_improv"],
         "no_improv_iter": sidebar_settings["no_improv_iter"],
+        "continue_after_gap": sidebar_settings.get("continue_after_gap", False),
+        "hgs_params": sidebar_settings.get("hgs_params", {}),
         "target_gap": target_gap,
         "reps": reps,
     }
@@ -245,7 +248,8 @@ with tab_single:
             sidebar_settings["time_limit"],
             st.session_state.get('all_histories', {}),
             st.session_state.get('instance_data'),
-            st.session_state.get('all_best_routes', {})
+            st.session_state.get('all_best_routes', {}),
+            sidebar_settings=sidebar_settings
         )
 
 

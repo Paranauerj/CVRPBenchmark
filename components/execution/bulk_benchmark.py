@@ -15,18 +15,21 @@ from components.utils import instance_data_parser
 from components.utils import solution_parser
 
 
-def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, path_map, task, shared_state):
+from components.utils.logging_utils import get_task_logger
+
+
+def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, path_map, task, shared_state, logger):
     """
     Process a single instance across all experiments.
     Returns list of result rows for this instance.
     shared_state: dict with 'lock', 'current_step', 'total_steps', 'results' keys
     """
     results = []
-    task.log(f"Starting processing for instance: {inst_name}")
+    logger.info(f"Starting processing for instance: {inst_name}")
     
     try:
         inst_data = instance_data_parser.load_vrp_instance(p_info["vrp"])
-        task.log(f"Loaded instance: {inst_name}")
+        logger.info(f"Loaded instance: {inst_name}")
         
         # Extract features
         instance_meta = extract_instance_metadata(inst_data, inst_name)
@@ -43,7 +46,7 @@ def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, p
             def bg_progress_callback(rep, reps, vehicle_attempt):
                 # Check for stop signal
                 if task.should_stop():
-                    task.log(f"Stop signal received in {inst_name}, skipping", level="warning")
+                    logger.warning(f"Stop signal received in {inst_name}, skipping")
                     raise InterruptedError("Benchmark stopped by user")
                 
                 # Only increment counter on first rep of first vehicle attempt
@@ -67,26 +70,27 @@ def _process_instance_benchmark(inst_name, p_info, bulk_experiments, settings, p
                 result_row_dict, found, final_attempt = run_experiment_with_vehicle_retry(
                     exp, inst_data, bks_val, instance_meta, 
                     max_retries=5, 
-                    log_fn=task.log, 
-                    progress_fn=bg_progress_callback
+                    log_fn=logger.info, 
+                    progress_fn=bg_progress_callback,
+                    engine=settings.get("engine", "ortools")
                 )
                 
                 if result_row_dict:
                     results.append(result_row_dict)
                     if found:
                         if final_attempt > 0:
-                            task.log(f"✓ Solution found for {inst_name} | {exp.name} with {final_attempt} additional vehicles.")
+                            logger.info(f"✓ Solution found for {inst_name} | {exp.name} with {final_attempt} additional vehicles.")
                     else:
-                        task.log(f"✗ No solution found for {inst_name} | {exp.name} even with +5 vehicles", level="warning")
+                        logger.warning(f"✗ No solution found for {inst_name} | {exp.name} even with +5 vehicles")
                 
             except InterruptedError:
                 return results
             except Exception as e:
-                task.log(f"Error in experiment {exp.name} for {inst_name}: {str(e)}", level="error")
+                logger.error(f"Error in experiment {exp.name} for {inst_name}: {str(e)}")
         
         return results
     except Exception as e:
-        task.log(f"Error processing {inst_name}: {str(e)}", level="error")
+        logger.error(f"Error processing {inst_name}: {str(e)}")
         return results
 
 
@@ -94,15 +98,16 @@ def run_bulk_benchmark_background(task, settings):
     """
     Run bulk benchmark execution as a background task.
     """
-    task.log(f"==================== BENCHMARK START ====================")
-    task.log(f"Task ID: {task.task_id}")
+    logger = get_task_logger(task.task_id)
+    logger.info(f"==================== BENCHMARK START ====================")
+    logger.info(f"Task ID: {task.task_id}")
     
     target_instances = settings.get('selected_instances', [])
     gaetano_dir = "instances/gaetano"
     
-    task.log(f"Loading instances from: {gaetano_dir}")
+    logger.info(f"Loading instances from: {gaetano_dir}")
     _, path_map = find_instance_files(gaetano_dir)
-    task.log(f"Found {len(target_instances)} instances to process")
+    logger.info(f"Found {len(target_instances)} instances to process")
 
     if not target_instances:
         task.set_completed(error="No instances selected for bulk run.")
@@ -121,12 +126,12 @@ def run_bulk_benchmark_background(task, settings):
     
     # Get number of parallel workers from settings
     num_parallel = settings.get('num_parallel_instances', 2)
-    task.log(f"Using {num_parallel} parallel workers for instance processing")
+    logger.info(f"Using {num_parallel} parallel workers for instance processing")
     
     # Run loop
-    task.log(f"Total experiments: {len(bulk_experiments)}")
-    task.log(f"Total instances to process: {len(target_instances)}")
-    task.log(f"================== EXECUTION START ====================")
+    logger.info(f"Total experiments: {len(bulk_experiments)}")
+    logger.info(f"Total instances to process: {len(target_instances)}")
+    logger.info(f"================== EXECUTION START ====================")
     
     # Prepare shared state for thread-safe progress tracking
     shared_state = {
@@ -140,7 +145,7 @@ def run_bulk_benchmark_background(task, settings):
     valid_instances = []
     for inst_name in target_instances:
         if inst_name not in path_map:
-            task.log(f"Skipping {inst_name}: not found in path map")
+            logger.info(f"Skipping {inst_name}: not found in path map")
             continue
         valid_instances.append((inst_name, path_map[inst_name]))
     
@@ -151,20 +156,20 @@ def run_bulk_benchmark_background(task, settings):
         for inst_name, p_info in valid_instances:
             # Check for stop signal before submitting
             if task.should_stop():
-                task.log("Stop signal received, halting execution...", level="error")
+                logger.error("Stop signal received, halting execution...")
                 task.set_completed(error="Benchmark stopped by user")
                 return
             
             future = executor.submit(
                 _process_instance_benchmark,
-                inst_name, p_info, bulk_experiments, settings, path_map, task, shared_state
+                inst_name, p_info, bulk_experiments, settings, path_map, task, shared_state, logger
             )
             futures.append(future)
         
         # Collect results as they complete
         for future in as_completed(futures):
             if task.should_stop():
-                task.log("Stop signal received, halting execution...", level="error")
+                logger.error("Stop signal received, halting execution...")
                 # Cancel remaining futures
                 for f in futures:
                     f.cancel()
@@ -175,38 +180,52 @@ def run_bulk_benchmark_background(task, settings):
                 instance_results = future.result()
                 bulk_results.extend(instance_results)
             except Exception as e:
-                task.log(f"Error in instance processing: {str(e)}", level="error")
+                logger.error(f"Error in instance processing: {str(e)}")
 
     # Save results to Excel
-    task.log(f"================== SAVING RESULTS ====================")
-    task.log(f"Total results to save: {len(bulk_results)}")
+    logger.info(f"================== SAVING RESULTS ====================")
+    logger.info(f"Total results to save: {len(bulk_results)}")
     
     if bulk_results:
         df_bulk = pd.DataFrame(bulk_results)
+        
+        # Remove instance feature columns as they are now in a separate file (instances_features_set.xlsx)
+        from components import constants as C
+        feature_cols = [
+            C.COL_DEPOT_LAYOUT, C.COL_CUSTOMER_LAYOUT, C.COL_DEMAND_TYPE, 
+            C.COL_ROUTE_CLASS, C.COL_CLIMATE, C.COL_CUSTOMERS, 
+            C.COL_CAPACITY
+        ]
+        df_bulk = df_bulk.drop(columns=[col for col in feature_cols if col in df_bulk.columns])
+
+        # If HGS, also remove progress over time (checkpoint columns), gaps, and time to target
+        if settings.get("engine") == "hgs":
+            # Remove convergence checkpoints
+            checkpoint_cols = [col for col in df_bulk.columns if "Cost @" in col]
+            # Remove Gaps and Time to Target
+            hgs_remove = [C.COL_BEST_GAP, C.COL_AVG_GAP, C.COL_TIME_TO_TARGET]
+            cols_to_drop = checkpoint_cols + [c for c in hgs_remove if c in df_bulk.columns]
+            df_bulk = df_bulk.drop(columns=cols_to_drop)
+
         server_dir = "server_output"
         os.makedirs(server_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         server_filename = f"vrp_bulk_benchmark_results_{timestamp}.xlsx"
         server_path = os.path.join(server_dir, server_filename)
         
-        task.log(f"Creating Excel file...")
+        logger.info(f"Creating Excel file...")
         try:
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+            with pd.ExcelWriter(server_path, engine='xlsxwriter') as writer:
                 df_bulk.to_excel(writer, sheet_name='Benchmark', index=False)
             
-            task.log(f"Writing to disk: {server_path}")
-            with open(server_path, "wb") as f:
-                f.write(buffer.getvalue())
-            
-            task.log(f"Results saved successfully!")
+            logger.info(f"Results saved successfully to {server_path}!")
             task.set_completed(results_file=server_path)
-            task.log(f"==================== BENCHMARK COMPLETE ====================")
+            logger.info(f"==================== BENCHMARK COMPLETE ====================")
         except Exception as e:
             task.set_completed(error=f"Failed to save results: {str(e)}")
-            task.log(f"Failed to save results: {str(e)}", level="error")
+            logger.error(f"Failed to save results: {str(e)}")
     else:
         error_msg = "No results were generated. Check your configurations."
         task.set_completed(error=error_msg)
-        task.log(error_msg, level="error")
-        task.log(f"==================== BENCHMARK FAILED ====================")
+        logger.error(error_msg)
+        logger.info(f"==================== BENCHMARK FAILED ====================")

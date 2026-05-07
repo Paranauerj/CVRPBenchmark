@@ -14,6 +14,7 @@ class ExecutionResult:
     accepted_neighbors: int = 0
     routes: Optional[List] = None
     history: List[tuple] = field(default_factory=list)  # List of (time, iters, cost) tuples
+    time_to_target: Optional[float] = None
     
     def to_dict(self) -> dict:
         """Convert to dictionary for backward compatibility."""
@@ -64,6 +65,7 @@ class RunStatistics:
     best_routes: Optional[List] = None
     checkpoints: Dict[int, List[float]] = field(default_factory=dict)  # {time_checkpoint: [costs]}
     all_histories: List[List[tuple]] = field(default_factory=list)  # Full history from each run
+    time_to_target_list: List[float] = field(default_factory=list)
     
     def to_dict(self) -> dict:
         """Convert to dictionary for backward compatibility."""
@@ -90,12 +92,14 @@ class BenchmarkResult:
     
     # Metrics
     repetitions: int
+    engine: str = "ortools"
     avg_cost: Optional[float] = None
     best_cost: Optional[float] = None
     bks_cost: Optional[float] = None
     best_gap_percent: Optional[float] = None
     avg_gap_percent: Optional[float] = None
     avg_cpu_time: Optional[float] = None
+    avg_time_to_target: Optional[float] = None
     
     # Time checkpoints (dynamic, can be added as needed)
     checkpoints: Dict[str, Optional[float]] = field(default_factory=dict)  # {"Avg Cost @ 5s": value, ...}
@@ -112,8 +116,16 @@ class BenchmarkResult:
             C.COL_CUSTOMERS: self.customers,
             C.COL_VEHICLES: self.vehicles,
             C.COL_CAPACITY: self.capacity,
-            C.COL_FIRST_SOLUTION: self.first_solution,
-            C.COL_METAHEURISTIC: self.metaheuristic,
+        }
+        
+        if self.engine == "hgs":
+            d[C.COL_SOLVER] = "HGS-CVRP"
+        else:
+            d[C.COL_SOLVER] = "OR-Tools"
+            d[C.COL_FIRST_SOLUTION] = self.first_solution
+            d[C.COL_METAHEURISTIC] = self.metaheuristic
+            
+        d.update({
             C.COL_REPETITIONS: self.repetitions,
             C.COL_AVG_COST: self.avg_cost,
             C.COL_BEST_COST: self.best_cost,
@@ -121,7 +133,35 @@ class BenchmarkResult:
             C.COL_BEST_GAP: self.best_gap_percent,
             C.COL_AVG_GAP: self.avg_gap_percent,
             C.COL_AVG_CPU_TIME: self.avg_cpu_time,
+            C.COL_TIME_TO_TARGET: self.avg_time_to_target,
+        })
+        # Add checkpoint columns
+        d.update(self.checkpoints)
+        return d
+
+    def to_performance_dict(self) -> dict:
+        """Convert to dictionary containing only performance metrics and algorithm info (no instance features)."""
+        d = {
+            C.COL_INSTANCE: self.instance,
         }
+        
+        if self.engine == "hgs":
+            d[C.COL_SOLVER] = "HGS-CVRP"
+        else:
+            d[C.COL_SOLVER] = "OR-Tools"
+            d[C.COL_FIRST_SOLUTION] = self.first_solution
+            d[C.COL_METAHEURISTIC] = self.metaheuristic
+            
+        d.update({
+            C.COL_REPETITIONS: self.repetitions,
+            C.COL_AVG_COST: self.avg_cost,
+            C.COL_BEST_COST: self.best_cost,
+            C.COL_BKS_COST: self.bks_cost,
+            C.COL_BEST_GAP: self.best_gap_percent,
+            C.COL_AVG_GAP: self.avg_gap_percent,
+            C.COL_AVG_CPU_TIME: self.avg_cpu_time,
+            C.COL_TIME_TO_TARGET: self.avg_time_to_target,
+        })
         # Add checkpoint columns
         d.update(self.checkpoints)
         return d

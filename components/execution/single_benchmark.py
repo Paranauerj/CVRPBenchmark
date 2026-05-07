@@ -45,7 +45,8 @@ def run_single_benchmark(instance_data, settings, bks_cost, instance_name="Unkno
         all_best_routes[exp.name] = data.best_routes
         
         result_row = build_result_row(exp, instance_meta, data.costs, data.times, 
-                                      data.neighbors_list, data.best_routes, bks_cost, data.checkpoints)
+                                      data.neighbors_list, data.best_routes, bks_cost, data.checkpoints,
+                                      engine=settings.get("engine", "ortools"))
         results_list.append(result_row.to_dict())
 
     df = pd.DataFrame(results_list)
