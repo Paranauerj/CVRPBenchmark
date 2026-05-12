@@ -9,7 +9,7 @@ from components import constants as C
 # Configuration
 INSTANCES_DIR = "instances/gaetano"
 RESULTS_DIR = "hgs_gaetano_results"
-MAX_INSTANCES = None 
+MAX_INSTANCES = 2 
 SAVE_SOLUTIONS = True  # Flag to generate .sol files
 NUM_PARALLEL = 4       # Number of concurrent workers
 CHUNK_SIZE = 10        # Number of instances per chunk

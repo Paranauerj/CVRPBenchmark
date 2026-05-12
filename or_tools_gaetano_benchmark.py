@@ -6,7 +6,9 @@ from components.execution.benchmark_common import (
     extract_instance_metadata, run_experiment_with_vehicle_retry
 )
 from components.models import ExperimentConfig
-from components.constants import C, FIRST_SOLUTIONS, METAHEURISTICS
+from components.utils import instance_data_parser, solution_parser
+from components import constants as C
+from components.constants import FIRST_SOLUTIONS, METAHEURISTICS
 
 # Configuration
 INSTANCES_DIR = "instances/gaetano"
