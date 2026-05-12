@@ -71,9 +71,9 @@ def solve_hgs(data,
     
     solver = hgs.Solver(parameters=ap, verbose=False)
     
-    start_time = time.time()
+    start_cpu = time.process_time()
     result = solver.solve_cvrp(hgs_data)
-    end_time = time.time()
+    end_cpu = time.process_time()
     
     if result.cost < 1e15: # Check for a valid cost
         # result.routes is a list of routes, where each route is a list of customer indices
@@ -81,8 +81,8 @@ def solve_hgs(data,
         
         # Accepted neighbors is not directly provided by HGS in a compatible way, return 0
         # History: HGS doesn't provide a step-by-step history easily via the wrapper
-        # We'll provide a single entry for the final result
-        history = [(end_time - start_time, 0, result.cost)]
+        # We'll provide a single entry for the final result using CPU time
+        history = [(end_cpu - start_cpu, 0, result.cost)]
         
         return result.cost, 0, result.routes, history, None
     else:

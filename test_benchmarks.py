@@ -8,7 +8,7 @@ import sys
 from components.utils import instance_data_parser, solution_parser
 from components.execution import configurable_solver
 from components.execution.benchmark_common import run_experiment_reps, ExperimentConfig
-from components.ui.sidebar import FIRST_SOLUTIONS, METAHEURISTICS
+from components.constants import FIRST_SOLUTIONS, METAHEURISTICS
 
 def test_uchoa_target_gap():
     print("\n--- Testing Uchoa Target Gap (X-n106-k14) ---")

@@ -53,9 +53,9 @@ def get_status_color(status: str) -> str:
     return colors.get(status, "⚪")
 
 
-@st.dialog("Delete Task", width="small")
 def show_delete_confirmation(task_id: str, task_name: str, task_manager: TaskManager):
     """Show delete confirmation dialog."""
+    import streamlit as st
     st.warning(f"⚠️ Are you sure you want to delete task '{task_name}'?")
     st.write("This action cannot be undone.")
     
@@ -72,9 +72,18 @@ def show_delete_confirmation(task_id: str, task_name: str, task_manager: TaskMan
         if st.button("❌ Cancel", width='stretch', key=f"cancel_delete_{task_id}"):
             st.rerun()
 
+# Apply Streamlit dialog decorator only if running in Streamlit
+try:
+    import streamlit as st
+    if st.runtime.exists():
+        show_delete_confirmation = st.dialog("Delete Task", width="small")(show_delete_confirmation)
+except (ImportError, AttributeError):
+    pass
+
 
 def render_task_card(task: TaskInfo, task_manager: TaskManager):
     """Render a card for a single task."""
+    import streamlit as st
     col1, col2, col3 = st.columns([2, 1, 1])
     
     with col1:

@@ -1,5 +1,33 @@
 """Constants for CVRP Benchmark - Column names, field names, and other hardcoded strings."""
 
+from ortools.constraint_solver import routing_enums_pb2
+
+
+# ============================================================================
+# ALGORITHM MAPPINGS
+# ============================================================================
+
+FIRST_SOLUTIONS = {
+    "Automatic": routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC,
+    "Path Cheapest Arc": routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC,
+    "Path Most Constrained Arc": routing_enums_pb2.FirstSolutionStrategy.PATH_MOST_CONSTRAINED_ARC,
+    "Savings (Clarke-Wright)": routing_enums_pb2.FirstSolutionStrategy.SAVINGS,
+    "Christofides": routing_enums_pb2.FirstSolutionStrategy.CHRISTOFIDES,
+    "Parallel Cheapest Insertion": routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION,
+    "Local Cheapest Insertion": routing_enums_pb2.FirstSolutionStrategy.LOCAL_CHEAPEST_INSERTION,
+    "Local Cheapest Arc": routing_enums_pb2.FirstSolutionStrategy.LOCAL_CHEAPEST_ARC,
+    "First Unbound Min Value": routing_enums_pb2.FirstSolutionStrategy.FIRST_UNBOUND_MIN_VALUE,
+}
+
+METAHEURISTICS = {
+    "Automatic": routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC,
+    "Greedy Descent": routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT,
+    "Guided Local Search (GLS)": routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH,
+    "Simulated Annealing": routing_enums_pb2.LocalSearchMetaheuristic.SIMULATED_ANNEALING,
+    "Tabu Search": routing_enums_pb2.LocalSearchMetaheuristic.TABU_SEARCH,
+    "Generic Tabu Search": routing_enums_pb2.LocalSearchMetaheuristic.GENERIC_TABU_SEARCH,
+}
+
 # ============================================================================
 # INSTANCE METADATA COLUMNS
 # ============================================================================
@@ -154,28 +182,3 @@ def get_display_columns(include_gaps: bool = True, include_time: bool = True) ->
     cols.extend(COUNT_COLS)
     
     return cols
-
-
-def get_column_config_for_display(display_columns: list[str]) -> dict:
-    """
-    Get Streamlit column configuration for number formatting.
-    
-    Args:
-        display_columns: List of column names to configure
-        
-    Returns:
-        Dictionary mapping column names to st.column_config objects
-    """
-    import streamlit as st
-    
-    config = {}
-    
-    for col in display_columns:
-        if col in [COL_BEST_COST, COL_AVG_COST, COL_BKS_COST]:
-            config[col] = st.column_config.NumberColumn(col, format=FORMAT_COST)
-        elif col in [COL_BEST_GAP, COL_AVG_GAP]:
-            config[col] = st.column_config.NumberColumn(col, format=FORMAT_GAP)
-        elif col in [COL_AVG_CPU_TIME, COL_TIME_TO_TARGET]:
-            config[col] = st.column_config.NumberColumn(col, format=FORMAT_TIME)
-    
-    return config

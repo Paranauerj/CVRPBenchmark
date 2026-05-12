@@ -6,6 +6,9 @@ from components.visualization.plotting import plot_routes, plot_convergence_comp
 from components import constants as C
 
 
+from components.ui.ui_utils import get_column_config_for_display
+
+
 def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histories, instance_data=None, all_best_routes=None, sidebar_settings=None):
     """Display benchmark results with tables, plots, and routes."""
     if results_df is None or results_df.empty:
@@ -60,7 +63,7 @@ def display_results(results_df, p_map, sel_inst, bks_cost, time_limit, all_histo
         df_display = df[display_cols].copy()
         
         # Use helper function to get column config
-        column_config = C.get_column_config_for_display(display_cols)
+        column_config = get_column_config_for_display(display_cols)
         
         st.dataframe(df_display, width='stretch', column_config=column_config if column_config else None)
     

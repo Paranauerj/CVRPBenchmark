@@ -3,7 +3,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import numpy as np
-import streamlit as st
 from collections import defaultdict
 
 
@@ -191,6 +190,7 @@ def plot_single_benchmark_results(instance_data, all_histories, all_best_routes,
     """
     Create a comprehensive visualization for single benchmark results.
     """
+    import streamlit as st
     if not all_histories:
         st.warning("No convergence history data available for visualization")
         return

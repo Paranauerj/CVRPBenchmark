@@ -185,6 +185,17 @@ def run_background_task(func, task_id: str, task_name: str = "Benchmark", *args,
             task.set_completed(error=str(e))
     
     thread = threading.Thread(target=wrapper, daemon=False)
+    
+    # Crucial: Add Streamlit script run context to the thread to avoid warnings
+    try:
+        from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
+        ctx = get_script_run_ctx()
+        if ctx:
+            add_script_run_ctx(thread, ctx)
+    except ImportError:
+        # Fallback for different streamlit versions or bare mode
+        pass
+
     task_manager.register_thread(task_id, thread)
     thread.start()
     return task_id

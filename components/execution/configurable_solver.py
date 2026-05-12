@@ -36,13 +36,14 @@ class SmartLimitCallback:
         self.continue_after_target = continue_after_target
         
         self.best_objective = float('inf')
-        self.last_improvement_time = time.time()
+        self.last_improvement_wall_time = time.time()
         self.last_improvement_neighbors = 0
-        self.start_time = time.time()
-        self.time_to_target = None
+        self.start_wall_time = time.time()
+        self.start_cpu_time = time.process_time()
+        self.time_to_target = None # Will store CPU time
         
         # History Tracking
-        # List of tuples: (time_elapsed, accepted_neighbors, cost)
+        # List of tuples: (cpu_time_elapsed, accepted_neighbors, cost)
         self.history = []
 
     def on_solution_callback(self):
@@ -51,19 +52,20 @@ class SmartLimitCallback:
         except:
             return 
         
-        current_time = time.time() - self.start_time
+        current_wall_time = time.time() - self.start_wall_time
+        current_cpu_time = time.process_time() - self.start_cpu_time
         current_neighbors = self.solver.AcceptedNeighbors()
 
         if current_cost < self.best_objective:
             self.best_objective = current_cost
-            self.last_improvement_time = time.time()
+            self.last_improvement_wall_time = time.time()
             self.last_improvement_neighbors = current_neighbors
-            # Record Improvement
-            self.history.append((current_time, current_neighbors, current_cost))
+            # Record Improvement using CPU time for history/performance reporting
+            self.history.append((current_cpu_time, current_neighbors, current_cost))
             
-            # Record time to target if reached for the first time
+            # Record time to target (CPU time) if reached for the first time
             if self.target_cost is not None and self.best_objective <= self.target_cost and self.time_to_target is None:
-                self.time_to_target = current_time
+                self.time_to_target = current_cpu_time
             
     def check_limit_callback(self):
         # Only stop on target_cost if continue_after_target is False
@@ -72,7 +74,8 @@ class SmartLimitCallback:
             
         if self.best_objective != float('inf'):
             if self.no_improvement_limit is not None:
-                if time.time() - self.last_improvement_time > self.no_improvement_limit:
+                # Keep no_improvement_limit on wall-clock time as requested
+                if time.time() - self.last_improvement_wall_time > self.no_improvement_limit:
                     return True
             
             if self.no_improvement_neighbors_limit is not None:

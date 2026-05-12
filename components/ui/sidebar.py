@@ -6,51 +6,21 @@ import glob
 from ortools.constraint_solver import routing_enums_pb2
 
 
-# Algorithm Constants
-# Some first solutions need to pass a callback (like Sweep) - only available in C++
-# https://github.com/google/or-tools/issues/2004#issuecomment-623913505
-# https://github.com/google/or-tools/issues/3593#issuecomment-1347828378
-# https://stackoverflow.com/questions/50137182/ortools-how-to-use-search-strategies-sweep-and-best-insertion
-FIRST_SOLUTIONS = {
-    "Automatic": routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC,
-    "Path Cheapest Arc": routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC,
-    "Path Most Constrained Arc": routing_enums_pb2.FirstSolutionStrategy.PATH_MOST_CONSTRAINED_ARC,
-    #"Evaluator Strategy": routing_enums_pb2.FirstSolutionStrategy.EVALUATOR_STRATEGY, # C++ only
-    "Savings (Clarke-Wright)": routing_enums_pb2.FirstSolutionStrategy.SAVINGS,
-    #"Sweep": routing_enums_pb2.FirstSolutionStrategy.SWEEP, # C++ only
-    "Christofides": routing_enums_pb2.FirstSolutionStrategy.CHRISTOFIDES,
-    #"All Unperformed": routing_enums_pb2.FirstSolutionStrategy.ALL_UNPERFORMED, # C++ only
-    #"Best Insertion": routing_enums_pb2.FirstSolutionStrategy.BEST_INSERTION, # C++ only
-    "Parallel Cheapest Insertion": routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION,
-    "Local Cheapest Insertion": routing_enums_pb2.FirstSolutionStrategy.LOCAL_CHEAPEST_INSERTION,
-    #"Global Cheapest Arc": routing_enums_pb2.FirstSolutionStrategy.GLOBAL_CHEAPEST_ARC, # C++ only
-    "Local Cheapest Arc": routing_enums_pb2.FirstSolutionStrategy.LOCAL_CHEAPEST_ARC,
-    "First Unbound Min Value": routing_enums_pb2.FirstSolutionStrategy.FIRST_UNBOUND_MIN_VALUE,
-}
-
-METAHEURISTICS = {
-    "Automatic": routing_enums_pb2.LocalSearchMetaheuristic.AUTOMATIC,
-    "Greedy Descent": routing_enums_pb2.LocalSearchMetaheuristic.GREEDY_DESCENT,
-    "Guided Local Search (GLS)": routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH,
-    "Simulated Annealing": routing_enums_pb2.LocalSearchMetaheuristic.SIMULATED_ANNEALING,
-    "Tabu Search": routing_enums_pb2.LocalSearchMetaheuristic.TABU_SEARCH,
-    "Generic Tabu Search": routing_enums_pb2.LocalSearchMetaheuristic.GENERIC_TABU_SEARCH,
-}
+from components.constants import FIRST_SOLUTIONS, METAHEURISTICS
 
 
-@st.cache_data
+from components.utils.helpers import find_instance_files as _find_instance_files
+
+
 def find_instance_files(directory="instances"):
-    """Find all VRP instance files in a directory."""
-    if not os.path.exists(directory):
-        return [], {}
-    vrp_files = sorted(glob.glob(os.path.join(directory, "*.vrp")))
-    valid_names, path_map = [], {}
-    for p in vrp_files:
-        base = os.path.basename(p).replace(".vrp", "")
-        sol = os.path.join(directory, base + ".sol")
-        valid_names.append(base)
-        path_map[base] = {"vrp": p, "sol": sol if os.path.exists(sol) else None}
-    return valid_names, path_map
+    """Cached wrapper for find_instance_files."""
+    if st.runtime.exists():
+        # Apply caching only if running in Streamlit
+        @st.cache_data
+        def _cached_find(d):
+            return _find_instance_files(d)
+        return _cached_find(directory)
+    return _find_instance_files(directory)
 
 
 SOLVER_ENGINES = {

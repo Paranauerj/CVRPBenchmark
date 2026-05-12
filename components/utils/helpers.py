@@ -1,5 +1,26 @@
 """Helper functions for CVRPBenchmark."""
 
+import os
+import glob
+
+
+def find_instance_files(directory="instances"):
+    """Find all VRP instance files in a directory."""
+    if not os.path.exists(directory):
+        return [], {}
+    vrp_files = sorted(glob.glob(os.path.join(directory, "**", "*.vrp"), recursive=True))
+    valid_names, path_map = [], {}
+    for p in vrp_files:
+        base = os.path.basename(p).replace(".vrp", "")
+        sol = p.replace(".vrp", ".sol")
+        valid_names.append(base)
+        path_map[base] = {
+            "vrp": p,
+            "sol": sol if os.path.exists(sol) else None
+        }
+    return valid_names, path_map
+
+
 def get_climate_from_filename(filename):
     """
     Extracts climate from Gaetano filenames like 'LDG95_3376_rain_95_0088'.

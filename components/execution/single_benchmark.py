@@ -1,11 +1,6 @@
 """Single instance benchmark execution (Synchronous only)."""
 
-import streamlit as st
 import pandas as pd
-import statistics
-import random
-import os
-import copy
 from components.execution.benchmark_common import (
     prepare_experiments, extract_instance_metadata, build_result_row, 
     run_experiment_reps
@@ -17,6 +12,7 @@ def run_single_benchmark(instance_data, settings, bks_cost, instance_name="Unkno
     Run a single instance benchmark with the given settings.
     Returns a tuple: (DataFrame with results, all_histories dict, all_best_routes dict)
     """
+    import streamlit as st
     experiments = prepare_experiments(settings)
     instance_meta = extract_instance_metadata(instance_data, instance_name)
     

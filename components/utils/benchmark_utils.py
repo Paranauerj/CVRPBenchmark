@@ -4,16 +4,19 @@ from components.models import ExecutionResult
 
 def execute_and_measure(algorithm_func, instance_data, **kwargs):
     """
-    Executes algorithm and measures duration.
-    Uses perf_counter for accurate wall-clock timing in multi-threaded environments.
+    Executes algorithm and measures duration using CPU time.
     """
-    start_time = time.perf_counter()
+    start_cpu = time.process_time()
+    start_wall = time.perf_counter()
 
     # Execute
     result = algorithm_func(instance_data, **kwargs)
 
-    end_time = time.perf_counter()
-    duration = end_time - start_time
+    end_cpu = time.process_time()
+    end_wall = time.perf_counter()
+
+    cpu_duration = end_cpu - start_cpu
+    wall_duration = end_wall - start_wall
 
     objective_value = None
     accepted_neighbors = 0
@@ -32,12 +35,12 @@ def execute_and_measure(algorithm_func, instance_data, **kwargs):
         objective_value = result
 
     if objective_value is not None:
-        print(f"    > Found: Cost={objective_value:.2f} (Time={duration:.4f}s)")
+        print(f"    > Found: Cost={objective_value:.2f} (CPU Time={cpu_duration:.4f}s, Wall Time={wall_duration:.4f}s)")
     else:
-        print(f"    > No Solution Found (Time={duration:.4f}s)")
+        print(f"    > No Solution Found (CPU Time={cpu_duration:.4f}s, Wall Time={wall_duration:.4f}s)")
 
     return ExecutionResult(
-        cpu_time=duration, # We keep the field name 'cpu_time' in the model for compatibility
+        cpu_time=cpu_duration, 
         objective_value=objective_value,
         accepted_neighbors=accepted_neighbors,
         routes=routes,
