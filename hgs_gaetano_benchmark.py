@@ -1,27 +1,29 @@
 import os
 from components.execution.benchmark_runner import BenchmarkRunner
 from components.execution.hygese_solver import solve_hgs
-from components.execution.benchmark_common import extract_instance_metadata, run_experiment_reps
+from components.execution.benchmark_common import (
+    extract_instance_metadata, run_experiment_with_vehicle_retry
+)
 from components.models import ExperimentConfig
 from components.utils import instance_data_parser, solution_parser
 from components import constants as C
 
-# Configuration
+# --- Configuration ---
 INSTANCES_DIR = "instances/gaetano"
 RESULTS_DIR = "hgs_gaetano_results"
-MAX_INSTANCES = 2 
+MAX_INSTANCES = 5      # Limit for testing
 SAVE_SOLUTIONS = True  # Flag to generate .sol files
-NUM_PARALLEL = 4       # Number of concurrent workers
+NUM_PARALLEL = 5       # Number of concurrent workers
 CHUNK_SIZE = 10        # Number of instances per chunk
-
 
 BENCHMARK_PARAMS = {
     "time_limit_seconds": 10,
-    "no_improvement_limit_iterations": 20000,
+    "no_improvement_limit_iterations": 1000000,
     "reps": 1,
 }
 
-def get_experiment():
+def get_experiment() -> ExperimentConfig:
+    """Creates the HGS experiment configuration."""
     kwargs = BENCHMARK_PARAMS.copy()
     reps = kwargs.pop("reps")
     return ExperimentConfig(
@@ -33,59 +35,60 @@ def get_experiment():
         reps=reps
     )
 
-def process_instance(vrp_path, experiments):
-    """Specialized processing for HGS (no features, no gaps)."""
+def process_instance(vrp_path: str, experiments: list[ExperimentConfig]):
+    """
+    Specialized processing for HGS benchmark.
+    Loads instance, runs experiment, and handles vehicle retries.
+    """
     inst_name = os.path.basename(vrp_path).replace(".vrp", "")
-    exp = experiments[0] # HGS only has one
+    exp = experiments[0]
     
     try:
         inst_data = instance_data_parser.load_vrp_instance(vrp_path)
         instance_meta = extract_instance_metadata(inst_data, inst_name)
         
-        # Run HGS
-        data = run_experiment_reps(exp, inst_data, exp.reps, bks_cost=None, time_checkpoints=[])
+        # Look for BKS (Best Known Solution)
+        sol_path = vrp_path.replace(".vrp", ".sol")
+        bks_val = None
+        if os.path.exists(sol_path):
+            try:
+                bks_val = solution_parser.parse_solution_file(sol_path)
+            except Exception: 
+                pass
+
+        # Run HGS with vehicle retry
+        result_row_dict, found, final_attempt, best_routes = run_experiment_with_vehicle_retry(
+            exp, inst_data, bks_val, instance_meta, max_retries=5, engine="hgs"
+        )
         
-        if not data.costs:
+        if not found or not result_row_dict:
             return []
 
-        avg_cost = sum(data.costs) / len(data.costs)
-        best_cost = min(data.costs)
-        avg_time = sum(data.times) / len(data.times)
+        best_cost = result_row_dict[C.COL_BEST_COST]
 
-        # Save .sol file if requested and it's better than existing or no existing
-        if SAVE_SOLUTIONS and data.best_routes:
-            sol_path = vrp_path.replace(".vrp", ".sol")
+        # Save .sol file if it's better than existing or no existing
+        if SAVE_SOLUTIONS and best_routes:
             save_needed = True
-            
             if os.path.exists(sol_path):
                 try:
                     existing_cost = solution_parser.parse_solution_file(sol_path)
                     if existing_cost is not None and best_cost >= existing_cost:
                         save_needed = False
-                except:
-                    # If error parsing, assume we should overwrite
+                except Exception:
                     pass
             
             if save_needed:
                 action = "Updating" if os.path.exists(sol_path) else "Saving new"
-                print(f"  [SOL] {action} best solution for {inst_name}: {best_cost}")
-                solution_parser.save_solution_file(sol_path, data.best_routes, best_cost)
+                print(f"  [SOL] {action} best solution for {inst_name}: {best_cost:.2f}")
+                solution_parser.save_solution_file(sol_path, best_routes, best_cost)
         
-        result = {
-            C.COL_INSTANCE: inst_name,
-            C.COL_SOLVER: "HGS-CVRP",
-            C.COL_VEHICLES: instance_meta.vehicles,
-            C.COL_REPETITIONS: exp.reps,
-            C.COL_BEST_COST: best_cost,
-            C.COL_AVG_COST: avg_cost,
-            C.COL_AVG_CPU_TIME: avg_time,
-        }
-        return [result]
+        return [result_row_dict]
     except Exception as e:
         print(f"Error processing {inst_name}: {e}")
         return []
 
 def main():
+    """Main execution block for HGS benchmark."""
     runner = BenchmarkRunner(
         name="HGS Gaetano Benchmark",
         instances_dir=INSTANCES_DIR,

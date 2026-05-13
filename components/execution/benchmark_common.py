@@ -252,7 +252,7 @@ def run_experiment_with_vehicle_retry(exp: ExperimentConfig, inst_data, bks_val,
             result_row = build_result_row(exp, current_meta, data.costs, data.times,
                                           data.neighbors_list, data.best_routes, bks_val, data.checkpoints, 
                                           time_checkpoints, data.time_to_target_list, engine=engine)
-            return result_row.to_dict(), bool(data.costs), vehicle_attempt
+            return result_row.to_dict(), bool(data.costs), vehicle_attempt, data.best_routes
             
-    return None, False, 0
+    return None, False, 0, None
 

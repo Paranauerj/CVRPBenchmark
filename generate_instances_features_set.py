@@ -72,7 +72,7 @@ def main():
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_path = os.path.join(OUTPUT_DIR, f"instances_features_set_{timestamp}.xlsx")
         
-        df.to_excel(output_path, index=False)
+        df.to_excel(output_path, index=False, engine='xlsxwriter')
         print(f"\n✨ Success! Feature set saved to: {output_path}")
         print(f"Total instances documented: {len(all_features)}")
     else:

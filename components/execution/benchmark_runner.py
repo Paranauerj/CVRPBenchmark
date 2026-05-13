@@ -172,7 +172,7 @@ class BenchmarkRunner:
         filename = f"{self.name.lower().replace(' ', '_')}_{timestamp}.xlsx"
         output_path = os.path.join(self.output_dir, filename)
         
-        df.to_excel(output_path, index=False)
+        df.to_excel(output_path, index=False, engine='xlsxwriter')
         self.logger.info(f"💾 Final results saved to {output_path}")
         return output_path
 

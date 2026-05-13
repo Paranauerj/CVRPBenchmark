@@ -75,7 +75,7 @@ def solve_hgs(data,
     result = solver.solve_cvrp(hgs_data)
     end_cpu = time.process_time()
     
-    if result.cost < 1e15: # Check for a valid cost
+    if result.cost > 0.01 and result.routes: # Check for a valid cost and routes
         # result.routes is a list of routes, where each route is a list of customer indices
         # result.cost is the total distance
         

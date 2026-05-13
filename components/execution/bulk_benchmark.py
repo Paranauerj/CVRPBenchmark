@@ -48,7 +48,7 @@ def _bulk_process_instance(vrp_path, experiments, engine="ortools"):
             try:
                 # Progress functions are tricky with ProcessPoolExecutor (can't pickle callbacks easily)
                 # So we disable per-rep progress for bulk runs and only do per-instance progress
-                result_row_dict, found, final_attempt = run_experiment_with_vehicle_retry(
+                result_row_dict, found, final_attempt, _ = run_experiment_with_vehicle_retry(
                     exp, inst_data, bks_val, instance_meta, 
                     max_retries=5, 
                     log_fn=lambda x: None,
