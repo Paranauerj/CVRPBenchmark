@@ -323,6 +323,15 @@ class TaskManager:
             
             return True
     
+    def delete_all_tasks(self) -> int:
+        """Delete all non-running tasks and their associated files (thread-safe)."""
+        tasks_to_delete = [tid for tid, t in self._tasks.items() if t.status != "running"]
+        count = 0
+        for tid in tasks_to_delete:
+            if self.delete_task(tid):
+                count += 1
+        return count
+
     def clean_old_tasks(self, days: int = 7) -> int:
         """Remove tasks older than specified days."""
         from datetime import timedelta

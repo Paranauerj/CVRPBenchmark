@@ -249,6 +249,12 @@ def run_experiment_with_vehicle_retry(exp: ExperimentConfig, inst_data, bks_val,
         
         # If we found a solution, or if this was the last attempt
         if data.costs or vehicle_attempt == max_retries:
+            # If solution was found, use the ACTUAL number of routes from the solution
+            # instead of the fleet size limit we gave the solver
+            if data.costs and data.best_routes:
+                current_meta = copy.copy(instance_meta)
+                current_meta.vehicles = len(data.best_routes)
+
             result_row = build_result_row(exp, current_meta, data.costs, data.times,
                                           data.neighbors_list, data.best_routes, bks_val, data.checkpoints, 
                                           time_checkpoints, data.time_to_target_list, engine=engine)

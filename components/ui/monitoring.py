@@ -72,11 +72,33 @@ def show_delete_confirmation(task_id: str, task_name: str, task_manager: TaskMan
         if st.button("❌ Cancel", width='stretch', key=f"cancel_delete_{task_id}"):
             st.rerun()
 
+
+def show_delete_all_confirmation(task_manager: TaskManager):
+    """Show confirmation dialog for deleting all tasks."""
+    st.warning("⚠️ Are you sure you want to delete ALL completed, failed, and stopped benchmarks?")
+    st.write("This will permanently remove all associated result files and logs. Running tasks will not be affected.")
+    
+    col_yes, col_no = st.columns(2)
+    with col_yes:
+        if st.button("✅ Yes, Delete All", width='stretch', key="confirm_delete_all"):
+            count = task_manager.delete_all_tasks()
+            if count > 0:
+                st.success(f"Successfully deleted {count} benchmarks")
+            else:
+                st.info("No benchmarks were deleted")
+            st.rerun()
+    
+    with col_no:
+        if st.button("❌ Cancel", width='stretch', key="cancel_delete_all"):
+            st.rerun()
+
+
 # Apply Streamlit dialog decorator only if running in Streamlit
 try:
     import streamlit as st
     if st.runtime.exists():
         show_delete_confirmation = st.dialog("Delete Task", width="small")(show_delete_confirmation)
+        show_delete_all_confirmation = st.dialog("Delete All Benchmarks", width="small")(show_delete_all_confirmation)
 except (ImportError, AttributeError):
     pass
 
@@ -178,11 +200,22 @@ def render_monitor_page():
         return
     
     # Control section
-    col_refresh, col_interval = st.columns([1, 2])
+    col_refresh, col_delete_all, col_interval = st.columns([1, 1, 2])
     
     with col_refresh:
         if st.button("🔄 Refresh", width='stretch'):
             st.rerun()
+            
+    with col_delete_all:
+        # Check if there are any non-running tasks to delete
+        try:
+            all_tasks = task_manager.get_all_tasks()
+            has_deletable_tasks = any(t.status != "running" for t in all_tasks)
+            if has_deletable_tasks:
+                if st.button("🗑️ Delete All", width='stretch', help="Delete all non-running benchmarks"):
+                    show_delete_all_confirmation(task_manager)
+        except:
+            pass
     
     with col_interval:
         refresh_interval = st.selectbox(

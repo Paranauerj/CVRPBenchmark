@@ -117,7 +117,7 @@ def render_single_benchmark_tab(sidebar_settings: Dict[str, Any]) -> None:
     st.divider()
     c1, c2, c3 = st.columns(3)
     with c1:
-        num_vehicles = st.number_input("🚛 Number of Vehicles", min_value=min_vehicles, value=min_vehicles)
+        num_vehicles = st.number_input("🚛 Number of Available Vehicles", min_value=min_vehicles, value=min_vehicles)
     with c2:
         reps = st.number_input("🔄 Repetitions", min_value=1, max_value=20, value=3)
     with c3:
