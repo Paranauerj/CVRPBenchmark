@@ -11,15 +11,15 @@ from components import constants as C
 # --- Configuration ---
 INSTANCES_DIR = "instances/gaetano"
 RESULTS_DIR = "hgs_gaetano_results"
-MAX_INSTANCES = 5      # Limit for testing
+MAX_INSTANCES = None   # Run all instances
 SAVE_SOLUTIONS = True  # Flag to generate .sol files
-NUM_PARALLEL = 5       # Number of concurrent workers
-CHUNK_SIZE = 10        # Number of instances per chunk
+NUM_PARALLEL = 8       # Number of concurrent workers
+CHUNK_SIZE = 5         # Smaller chunk size for longer runs
 
 BENCHMARK_PARAMS = {
-    "time_limit_seconds": 10,
-    "no_improvement_limit_iterations": 1000000,
-    "reps": 1,
+    "time_limit_seconds": 600,
+    "no_improvement_limit_iterations": 1000000000,
+    "reps": 3,
 }
 
 def get_experiment() -> ExperimentConfig:
