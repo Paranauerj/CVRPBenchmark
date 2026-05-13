@@ -36,9 +36,9 @@ class SmartLimitCallback:
         self.continue_after_target = continue_after_target
         
         self.best_objective = float('inf')
-        self.last_improvement_wall_time = time.time()
+        self.last_improvement_wall_time = time.perf_counter()
         self.last_improvement_neighbors = 0
-        self.start_wall_time = time.time()
+        self.start_wall_time = time.perf_counter()
         self.start_cpu_time = time.process_time()
         self.time_to_target = None # Will store CPU time
         
@@ -52,13 +52,13 @@ class SmartLimitCallback:
         except:
             return 
         
-        current_wall_time = time.time() - self.start_wall_time
+        current_wall_time = time.perf_counter() - self.start_wall_time
         current_cpu_time = time.process_time() - self.start_cpu_time
         current_neighbors = self.solver.AcceptedNeighbors()
 
         if current_cost < self.best_objective:
             self.best_objective = current_cost
-            self.last_improvement_wall_time = time.time()
+            self.last_improvement_wall_time = time.perf_counter()
             self.last_improvement_neighbors = current_neighbors
             # Record Improvement using CPU time for history/performance reporting
             self.history.append((current_cpu_time, current_neighbors, current_cost))
@@ -75,7 +75,7 @@ class SmartLimitCallback:
         if self.best_objective != float('inf'):
             if self.no_improvement_limit is not None:
                 # Keep no_improvement_limit on wall-clock time as requested
-                if time.time() - self.last_improvement_wall_time > self.no_improvement_limit:
+                if time.perf_counter() - self.last_improvement_wall_time > self.no_improvement_limit:
                     return True
             
             if self.no_improvement_neighbors_limit is not None:
