@@ -15,6 +15,8 @@ MAX_INSTANCES = None   # Run all instances
 SAVE_SOLUTIONS = True  # Flag to generate .sol files
 NUM_PARALLEL = 8       # Number of concurrent workers
 CHUNK_SIZE = 5         # Smaller chunk size for longer runs
+SOLVE_ONLY_UNSOLVED = True # Only run on instances without .sol files
+MAX_VEHICLE_RETRIES = 10    # Increased to 10 for harder instances
 
 BENCHMARK_PARAMS = {
     "time_limit_seconds": 600,
@@ -43,12 +45,17 @@ def process_instance(vrp_path: str, experiments: list[ExperimentConfig]):
     inst_name = os.path.basename(vrp_path).replace(".vrp", "")
     exp = experiments[0]
     
+    # Check if already solved
+    sol_path = vrp_path.replace(".vrp", ".sol")
+    if SOLVE_ONLY_UNSOLVED and os.path.exists(sol_path):
+        print(f"Skipping {inst_name}: already solved.")
+        return []
+
     try:
         inst_data = instance_data_parser.load_vrp_instance(vrp_path)
         instance_meta = extract_instance_metadata(inst_data, inst_name)
         
         # Look for BKS (Best Known Solution)
-        sol_path = vrp_path.replace(".vrp", ".sol")
         bks_val = None
         if os.path.exists(sol_path):
             try:
@@ -58,7 +65,7 @@ def process_instance(vrp_path: str, experiments: list[ExperimentConfig]):
 
         # Run HGS with vehicle retry
         result_row_dict, found, final_attempt, best_routes = run_experiment_with_vehicle_retry(
-            exp, inst_data, bks_val, instance_meta, max_retries=5, engine="hgs"
+            exp, inst_data, bks_val, instance_meta, max_retries=MAX_VEHICLE_RETRIES, engine="hgs"
         )
         
         if not found or not result_row_dict:
