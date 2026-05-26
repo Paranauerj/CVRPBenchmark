@@ -6,7 +6,7 @@ from components.execution.benchmark_common import extract_instance_metadata
 from datetime import datetime
 
 # Configuration
-INSTANCES_DIRS = ["instances/gaetano", "instances/uchoa"]
+INSTANCES_DIRS = ["instances/gaetano"]
 OUTPUT_DIR = "server_output"
 
 def main():
@@ -16,16 +16,17 @@ def main():
     """
     all_features = []
     
-    print("🚀 Starting instance feature extraction...")
+    print("Starting instance feature extraction...")
     
     for directory in INSTANCES_DIRS:
         if not os.path.exists(directory):
-            print(f"⚠️ Directory not found, skipping: {directory}")
+            print(f"Directory not found, skipping: {directory}")
             continue
             
-        print(f"📂 Scanning directory: {directory}")
+        print(f"Scanning directory: {directory}")
         vrp_files = sorted(glob.glob(os.path.join(directory, "*.vrp")))
         
+        count = 0
         for vrp_path in vrp_files:
             inst_name = os.path.basename(vrp_path).replace(".vrp", "")
             
@@ -61,9 +62,11 @@ def main():
                     "BKS": bks_val
                 }
                 all_features.append(row)
-                print(f"  ✅ Extracted: {inst_name}")
+                count += 1
+                if count % 1000 == 0:
+                    print(f"  Processed {count} instances in {os.path.basename(directory)}...")
             except Exception as e:
-                print(f"  ❌ Error processing {inst_name}: {e}")
+                print(f"  Error processing {inst_name}: {e}")
 
     if all_features:
         df = pd.DataFrame(all_features)
@@ -73,10 +76,10 @@ def main():
         output_path = os.path.join(OUTPUT_DIR, f"instances_features_set_{timestamp}.xlsx")
         
         df.to_excel(output_path, index=False, engine='xlsxwriter')
-        print(f"\n✨ Success! Feature set saved to: {output_path}")
+        print(f"\nSuccess! Feature set saved to: {output_path}")
         print(f"Total instances documented: {len(all_features)}")
     else:
-        print("\n❌ No instances found or processed.")
+        print("\nNo instances found or processed.")
 
 if __name__ == "__main__":
     main()
