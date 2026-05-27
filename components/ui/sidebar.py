@@ -126,8 +126,15 @@ def render_shared_sidebar():
                 value=False,
                 help="If enabled, OR-Tools will continue running until the time limit even if the target gap is reached. The time to reach the gap will be recorded."
             )
+            
+            use_permutations = st.checkbox(
+                "Permute Customers (Search Seed)",
+                value=False,
+                help="If enabled, the order of customers will be shuffled for each repetition. For deterministic algorithms like OR-Tools, this acts as a seed to explore different search regions."
+            )
         else:
             continue_after_gap = False
+            use_permutations = False
             # HGS uses iterations without improvement
             no_improv_iter = st.number_input(
                 "Iterations without improvement",
@@ -165,5 +172,6 @@ def render_shared_sidebar():
         "no_improv": no_improv,
         "no_improv_iter": no_improv_iter,
         "continue_after_gap": continue_after_gap,
+        "use_permutations": use_permutations,
         "hgs_params": hgs_params,
     }
