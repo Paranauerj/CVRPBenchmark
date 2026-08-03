@@ -14,7 +14,8 @@ from components import constants as C
 # --- Configuration ---
 INSTANCES_DIR = "instances/gaetano"
 RESULTS_DIR = "gaetano_ortools_results"
-MAX_INSTANCES = 10000  # Full set
+MAX_INSTANCES = 1000   # 1,000 instances sampled randomly
+RANDOM_SAMPLE = True   # Sample 1,000 random instances
 NUM_PARALLEL = 8       # Number of concurrent workers
 CHUNK_SIZE = 10        # Number of instances per chunk
 TARGET_GAP_PCT = 5.0   # Record time to reach 5% gap
@@ -132,12 +133,13 @@ def process_instance(vrp_path: str, experiments: list[ExperimentConfig]):
 def main():
     """Main execution block for OR-Tools benchmark."""
     runner = BenchmarkRunner(
-        name="OR-Tools Gaetano Benchmark (Full Set)",
+        name="OR-Tools Gaetano Benchmark (1,000 Random Instances)",
         instances_dir=INSTANCES_DIR,
         results_dir=RESULTS_DIR,
         max_instances=MAX_INSTANCES,
         num_parallel=NUM_PARALLEL,
-        chunk_size=CHUNK_SIZE
+        chunk_size=CHUNK_SIZE,
+        random_sample=RANDOM_SAMPLE
     )
     
     runner.run(

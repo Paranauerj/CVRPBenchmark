@@ -3,7 +3,7 @@
 This document outlines the strategy for benchmarking Google OR-Tools on the Gaetano instance set using dynamic time limits and solution progress tracking.
 
 ## 1. Objective
-The goal is to evaluate OR-Tools performance on the Gaetano collection (10,000 instances) using a standardized methodology that accounts for instance size and monitors convergence over time.
+The goal is to evaluate OR-Tools performance on a representative sample of 1,000 randomly selected Gaetano instances using a standardized methodology that accounts for instance size and monitors convergence over time.
 
 ## 2. Why Google OR-Tools?
 Google OR-Tools is one of the most widely used open-source libraries for combinatorial optimization. Benchmarking it against the HGS-CVRP (Best Known Solutions) is crucial because:
@@ -35,7 +35,7 @@ We record the best and average solution values at multiple search stages to meas
 | **Repetitions** | 3 | Independent runs per experiment. |
 | **Randomization** | Permutation | Shuffling customers per repetition. |
 | **Parallel Workers** | 8 | Concurrent instances solved. |
-| **Scope** | 10,000 | All Gaetano instances. |
+| **Scope** | 1,000 | 1,000 randomly sampled Gaetano instances. |
 
 ### Solver Strategies (OR-Tools)
 We test all combinations of:
@@ -55,11 +55,11 @@ export MKL_NUM_THREADS=1
 nohup python or_tools_gaetano_benchmark.py > ortools_benchmark.log 2>&1 &
 ```
 
-## 6. Time Estimation (Full Set: 10,000 Instances)
+## 6. Time Estimation (Reduced Set: 1,000 Instances)
 
-*   **Instance Profile:** All 10,000 Gaetano instances.
-*   **Combinations:** 9 strategy combos $\times$ 3 reps = **270,000 total runs**.
-*   **Total Clock Time (8 Workers):** **~540 hours (approx. 22.5 days)**.
+*   **Instance Profile:** 1,000 randomly sampled Gaetano instances.
+*   **Combinations:** 9 strategy combos $\times$ 3 reps = **27,000 total runs**.
+*   **Total Clock Time (8 Workers):** **~54 hours (approx. 2.25 days)**.
 
 ## 7. Reliability & Resumption
 *   **Chunking:** Results are saved every 10 instances in `gaetano_ortools_results`.

@@ -13,7 +13,8 @@ class BenchmarkRunner:
     """
     
     def __init__(self, name, instances_dir, results_dir, output_dir="server_output", 
-                 chunk_size=10, num_parallel=2, max_instances=None, use_processes=True):
+                 chunk_size=10, num_parallel=2, max_instances=None, use_processes=True,
+                 random_sample=False, seed=None):
         self.name = name
         self.instances_dir = instances_dir
         self.results_dir = results_dir
@@ -22,6 +23,8 @@ class BenchmarkRunner:
         self.num_parallel = num_parallel
         self.max_instances = max_instances
         self.use_processes = use_processes  # True: ProcessPoolExecutor, False: ThreadPoolExecutor
+        self.random_sample = random_sample
+        self.seed = seed
 
         self.logger = setup_logger(name)
         os.makedirs(self.results_dir, exist_ok=True)
@@ -30,7 +33,14 @@ class BenchmarkRunner:
     def get_instance_files(self):
         """Returns a list of all .vrp files in the instances directory."""
         files = sorted(glob.glob(os.path.join(self.instances_dir, "*.vrp")))
-        if self.max_instances:
+        if self.random_sample and self.max_instances and self.max_instances < len(files):
+            import random
+            if self.seed is not None:
+                rng = random.Random(self.seed)
+                files = sorted(rng.sample(files, self.max_instances))
+            else:
+                files = sorted(random.sample(files, self.max_instances))
+        elif self.max_instances:
             files = files[:self.max_instances]
         return files
 
