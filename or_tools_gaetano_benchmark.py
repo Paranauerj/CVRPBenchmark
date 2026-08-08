@@ -20,8 +20,8 @@ NUM_PARALLEL = 8       # Number of concurrent workers
 CHUNK_SIZE = 10        # Number of instances per chunk
 TARGET_GAP_PCT = 5.0   # Record time to reach 5% gap
 
-# Progress monitoring interval: 1 second intervals up to dynamic time limit T = N * 0.5
-CHECKPOINT_INTERVAL_SEC = 1.0
+# Progress monitoring interval: 0.5 second intervals up to dynamic time limit T = N * 0.5
+CHECKPOINT_INTERVAL_SEC = 0.5
 
 # Reverse maps for labeling
 FS_NAME_MAP = {v: k for k, v in FIRST_SOLUTIONS.items()}
@@ -69,7 +69,7 @@ def process_instance(vrp_path: str, experiments: list[ExperimentConfig]):
     """
     Standard processing for OR-Tools instances.
     Implements dynamic time limit T = N * 0.5.
-    Progress is tracked every 1 second until time limit T.
+    Progress is tracked every 0.5 seconds until time limit T.
     """
     inst_name = os.path.basename(vrp_path).replace(".vrp", "")
     try:
@@ -81,21 +81,25 @@ def process_instance(vrp_path: str, experiments: list[ExperimentConfig]):
         N = instance_meta.customers
         T = N * 0.5
         
-        # Define Checkpoints: Every 1 second up to time limit T
+        # Define Checkpoints: Every 0.5 seconds up to time limit T
         checkpoint_configs = []
         probe_times = set()
         
-        max_sec = int(T)
-        for t_sec in range(1, max_sec + 1):
-            t_float = float(t_sec)
-            probe_times.add(t_float)
-            checkpoint_configs.append({"time": t_float, "label": str(t_sec), "is_pct": False})
+        step_idx = 1
+        while True:
+            t_val = round(step_idx * CHECKPOINT_INTERVAL_SEC, 3)
+            if t_val > T:
+                break
+            probe_times.add(t_val)
+            label_str = str(int(t_val)) if t_val.is_integer() else f"{t_val:.1f}"
+            checkpoint_configs.append({"time": t_val, "label": label_str, "is_pct": False})
+            step_idx += 1
             
-        if T > max_sec:
-            t_final = round(T, 3)
-            if t_final not in probe_times:
-                probe_times.add(t_final)
-                checkpoint_configs.append({"time": t_final, "label": str(round(T, 1)), "is_pct": False})
+        t_final = round(T, 3)
+        if t_final not in probe_times:
+            probe_times.add(t_final)
+            label_str = str(int(t_final)) if t_final.is_integer() else f"{t_final:.1f}"
+            checkpoint_configs.append({"time": t_final, "label": label_str, "is_pct": False})
         
         time_checkpoints = sorted(list(probe_times))
         

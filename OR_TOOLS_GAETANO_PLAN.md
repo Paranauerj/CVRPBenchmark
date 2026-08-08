@@ -22,8 +22,8 @@ $$T = N \times 0.5 \text{ seconds}$$
 *   **Randomization:** Customer permutation per run. This ensures each repetition explores a different part of the search space starting from a different constructive solution.
 
 ### Progress Monitoring
-We record the best and average solution values at every second of execution to analyze convergence continuously over time:
-*   **Second-by-Second Benchmarks:** Recorded at every 1 second ($1\text{s}, 2\text{s}, 3\text{s}, \dots, \lfloor T \rfloor\text{s}$, and at the exact time limit $T$) until the dynamic time limit is reached.
+We record the best and average solution values every 0.5 seconds of execution to analyze convergence continuously over time:
+*   **Sub-Second (0.5s) Benchmarks:** Recorded every 0.5 seconds ($0.5\text{s}, 1\text{s}, 1.5\text{s}, 2\text{s}, \dots$, and at the exact time limit $T$) until the dynamic time limit is reached.
 *   **Target Gap:** We track the exact time required to reach a **5% gap** relative to BKS.
 
 ## 4. Configuration Parameters
@@ -35,7 +35,7 @@ We record the best and average solution values at every second of execution to a
 | **Randomization** | Permutation | Shuffling customers per repetition. |
 | **Parallel Workers** | 8 | Concurrent instances solved. |
 | **Scope** | 1,000 | 1,000 randomly sampled Gaetano instances. |
-| **Progress Logging** | Every 1 second | Second-by-second cost recording ($1\text{s}, 2\text{s}, \dots$) until time limit $T$. |
+| **Progress Logging** | Every 0.5 seconds | Cost recording every 0.5s ($0.5\text{s}, 1\text{s}, 1.5\text{s}, \dots$) until time limit $T$. |
 
 ### Solver Strategies (OR-Tools)
 We test all combinations of:
