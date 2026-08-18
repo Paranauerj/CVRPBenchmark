@@ -1,3 +1,6 @@
+import os
+import sys
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,6 +18,29 @@ warnings.filterwarnings('ignore')
 
 # Global Constants
 RANDOM_SEED = 42
+
+
+class DualLogger:
+    """Redirects stdout to both console and a log file simultaneously."""
+    def __init__(self, filepath: str, mode: str = 'w', encoding: str = 'utf-8'):
+        self.terminal = sys.stdout
+        self.log_file = open(filepath, mode=mode, encoding=encoding)
+
+    def write(self, message):
+        self.terminal.write(message)
+        self.log_file.write(message)
+        self.log_file.flush()
+
+    def flush(self):
+        self.terminal.flush()
+        self.log_file.flush()
+
+    def isatty(self):
+        return getattr(self.terminal, 'isatty', lambda: False)()
+
+    def close(self):
+        if hasattr(self, 'log_file') and not self.log_file.closed:
+            self.log_file.close()
 
 
 class AnytimeAlgorithmSelectionUpdated:
@@ -747,36 +773,60 @@ if __name__ == '__main__':
     RANDOM_SEED = 42
     TABLE_ENABLED = True
     PLOT_ENABLED = True
+    LOG_FILE = 'anytime_algorithm_selection.log'
 
-    data_file = 'or-tools_gaetano_benchmark_(1,000_random_instances)_20501208_174656.xlsx'
-    aas = AnytimeAlgorithmSelectionUpdated(
-        data_file,
-        random_seed=RANDOM_SEED,
-        table_enabled=TABLE_ENABLED,
-        plot_enabled=PLOT_ENABLED
-    )
-    aas.load_and_preprocess_data()
+    # Set up dual logging to both console and file
+    logger = DualLogger(LOG_FILE)
+    sys.stdout = logger
 
-    # Train all models
-    results = [
-        aas.train_gradient_boosting_classifier(),
-        aas.train_random_forest(),
-        aas.train_mlp_classifier(),
-        aas.train_gradient_boosting_regressor(),
-        aas.train_lightgbm_ranker()
-    ]
+    try:
+        start_time = datetime.now()
+        print(f"{'=' * 95}")
+        print(f"ANYTIME ALGORITHM SELECTION BENCHMARK RUN")
+        print(f"Started at: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Logging output to: {LOG_FILE}")
+        print(f"{'=' * 95}\n")
 
-    # Display tables (if table_enabled is True)
-    aas.display_algorithm_dominance_table()
-    aas.display_time_regime_table()
-    rf_res = [r for r in results if 'Random Forest' in r['Model']][0]
-    aas.display_feature_importance_table(rf_res['Pipeline'])
-    aas.display_selection_strategies_table(results)
+        data_file = 'or-tools_gaetano_benchmark_(1,000_random_instances)_20501208_174656.xlsx'
+        aas = AnytimeAlgorithmSelectionUpdated(
+            data_file,
+            random_seed=RANDOM_SEED,
+            table_enabled=TABLE_ENABLED,
+            plot_enabled=PLOT_ENABLED
+        )
+        aas.load_and_preprocess_data()
 
-    # Generate plots (if plot_enabled is True)
-    if PLOT_ENABLED:
-        print("Generating updated figures...")
-        aas.plot_optimality_gap_across_time('anytime_optimality_gap_bks_all_9_algorithms.png')
-        aas.plot_selection_accuracy(results, 'anytime_selection_accuracy_comparison.png')
-        aas.plot_cost_gain_vs_static(results, 'anytime_cost_gain_vs_static.png')
-        aas.plot_confusion_matrix('anytime_aas_confusion_matrix.png')
+        # Train all models
+        results = [
+            aas.train_gradient_boosting_classifier(),
+            aas.train_random_forest(),
+            aas.train_mlp_classifier(),
+            aas.train_gradient_boosting_regressor(),
+            aas.train_lightgbm_ranker()
+        ]
+
+        # Display tables (if table_enabled is True)
+        aas.display_algorithm_dominance_table()
+        aas.display_time_regime_table()
+        rf_res = [r for r in results if 'Random Forest' in r['Model']][0]
+        aas.display_feature_importance_table(rf_res['Pipeline'])
+        aas.display_selection_strategies_table(results)
+
+        # Generate plots (if plot_enabled is True)
+        if PLOT_ENABLED:
+            print("Generating updated figures...")
+            aas.plot_optimality_gap_across_time('anytime_optimality_gap_bks_all_9_algorithms.png')
+            aas.plot_selection_accuracy(results, 'anytime_selection_accuracy_comparison.png')
+            aas.plot_cost_gain_vs_static(results, 'anytime_cost_gain_vs_static.png')
+            aas.plot_confusion_matrix('anytime_aas_confusion_matrix.png')
+
+        end_time = datetime.now()
+        elapsed = end_time - start_time
+        print(f"\n{'=' * 95}")
+        print(f"Completed at: {end_time.strftime('%Y-%m-%d %H:%M:%S')} (Elapsed: {elapsed})")
+        print(f"All output successfully saved to: {LOG_FILE}")
+        print(f"{'=' * 95}")
+
+    finally:
+        sys.stdout = logger.terminal
+        logger.close()
