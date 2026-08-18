@@ -251,6 +251,61 @@ class AnytimeAlgorithmSelectionUpdated:
         self.best_y_pred = y_pred
         return self.evaluate_predictions(y_pred, 'Gradient Boosting Classifier', pipeline)
 
+    def train_lightgbm_ranker(self):
+        """LightGBM Ranker (Learning-to-Rank) for algorithm selection."""
+        from lightgbm import LGBMRanker
+
+        # Ensure contiguous grouping for LightGBM
+        train_reg_df = self.reg_df[self.reg_df['Instance'].isin(self.train_instances)].copy()
+        train_reg_df.sort_values(by=['Instance', 'Time_Budget'], inplace=True)
+        
+        # Calculate group sizes (number of algorithms per instance-time pair)
+        group_sizes = train_reg_df.groupby(['Instance', 'Time_Budget'], sort=False).size().values
+        
+        # Transform routing cost into a relevance score (higher integer = better performance)
+        # Using dense ranking: tying minimal costs receive the identical highest relevance score.
+        train_reg_df['Relevance'] = train_reg_df.groupby(['Instance', 'Time_Budget'], sort=False)['Cost'].rank(ascending=False, method='dense').astype(int)
+        
+        X_train_r = train_reg_df.drop(['Cost', 'Instance', 'BKS', 'Relevance'], axis=1)
+        y_train_r = train_reg_df['Relevance']
+
+        reg_categorical_cols = self.categorical_cols + ['Algorithm']
+        reg_preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', StandardScaler(), self.numerical_cols),
+                ('cat', OneHotEncoder(handle_unknown='ignore'), reg_categorical_cols)
+            ])
+
+        # Initialize Ranker (LambdaMART)
+        ranker = LGBMRanker(n_estimators=150,learning_rate=0.1, max_depth=5, random_state=self.random_seed)
+        
+        pipeline = Pipeline(steps=[('preprocessor', reg_preprocessor), ('ranker', ranker)])
+        
+        # Pass group parameter directly to the ranker via pipeline kwargs
+        pipeline.fit(X_train_r, y_train_r, ranker__group=group_sizes)
+
+        # Batch generation for inference matches the regressor logic
+        batch_features = []
+        for i in range(len(self.test_df)):
+            row = self.test_df.iloc[i]
+            feat = row[self.X_class_columns].to_dict()
+            for alg in self.alg_names:
+                alg_feat = feat.copy()
+                alg_feat['Algorithm'] = alg
+                batch_features.append(alg_feat)
+
+        batch_df = pd.DataFrame(batch_features)
+        
+        # Predict relevance scores
+        pred_scores = pipeline.predict(batch_df)
+        pred_scores_matrix = pred_scores.reshape(len(self.test_df), len(self.alg_names))
+        
+        # Ranker selects the algorithm with the highest predicted relevance
+        best_alg_indices = np.argmax(pred_scores_matrix, axis=1)
+        pred_algs = [self.alg_names[idx] for idx in best_alg_indices]
+
+        return self.evaluate_predictions(pred_algs, 'LightGBM Ranker (LTR)', pipeline)
+
     def train_mlp_classifier(self):
         """Multi-Layer Perceptron Classifier."""
         model = MLPClassifier(hidden_layer_sizes=(128, 64), max_iter=250, activation='relu', random_state=self.random_seed)
@@ -707,7 +762,8 @@ if __name__ == '__main__':
         aas.train_gradient_boosting_classifier(),
         aas.train_random_forest(),
         aas.train_mlp_classifier(),
-        aas.train_gradient_boosting_regressor()
+        aas.train_gradient_boosting_regressor(),
+        aas.train_lightgbm_ranker()
     ]
 
     # Display tables (if table_enabled is True)
