@@ -261,7 +261,7 @@ class AnytimeAlgorithmSelectionUpdated:
 
     def train_random_forest(self):
         """Random Forest Classifier."""
-        model = RandomForestClassifier(n_estimators=150, max_depth=12, min_samples_leaf=3, random_state=self.random_seed, n_jobs=-1)
+        model = RandomForestClassifier(n_estimators=150, max_depth=6, min_samples_leaf=50, random_state=self.random_seed)
         pipeline = Pipeline(steps=[('preprocessor', self.preprocessor), ('classifier', model)])
         pipeline.fit(self.X_train, self.y_train)
         y_pred = pipeline.predict(self.X_test)
@@ -269,7 +269,7 @@ class AnytimeAlgorithmSelectionUpdated:
 
     def train_gradient_boosting_classifier(self):
         """Gradient Boosting Classifier trained on all winning labels."""
-        model = GradientBoostingClassifier(n_estimators=100, learning_rate=0.1, max_depth=5, random_state=self.random_seed)
+        model = GradientBoostingClassifier(n_estimators=250, learning_rate=0.05, max_depth=3, subsample=0.8, max_features=0.8, random_state=self.random_seed)
         pipeline = Pipeline(steps=[('preprocessor', self.preprocessor), ('classifier', model)])
         pipeline.fit(self.X_train_all, self.y_train_all)
         y_pred = pipeline.predict(self.X_test)
@@ -303,7 +303,7 @@ class AnytimeAlgorithmSelectionUpdated:
             ])
 
         # Initialize Ranker (LambdaMART)
-        ranker = LGBMRanker(n_estimators=150,learning_rate=0.1, max_depth=5, random_state=self.random_seed)
+        ranker = LGBMRanker(n_estimators=250,learning_rate=0.05, max_depth=3, subsample=0.8, colsample_bytree=0.8, min_child_samples=50,random_state=self.random_seed)
         
         pipeline = Pipeline(steps=[('preprocessor', reg_preprocessor), ('ranker', ranker)])
         
@@ -334,7 +334,7 @@ class AnytimeAlgorithmSelectionUpdated:
 
     def train_mlp_classifier(self):
         """Multi-Layer Perceptron Classifier."""
-        model = MLPClassifier(hidden_layer_sizes=(128, 64), max_iter=250, activation='relu', random_state=self.random_seed)
+        model = MLPClassifier(hidden_layer_sizes=(16, 8), max_iter=250, activation='relu', alpha=0.01, random_state=self.random_seed)
         pipeline = Pipeline(steps=[('preprocessor', self.preprocessor), ('classifier', model)])
         pipeline.fit(self.X_train, self.y_train)
         y_pred = pipeline.predict(self.X_test)
@@ -353,7 +353,7 @@ class AnytimeAlgorithmSelectionUpdated:
                 ('cat', OneHotEncoder(handle_unknown='ignore'), reg_categorical_cols)
             ])
 
-        reg_model = GradientBoostingRegressor(n_estimators=80, learning_rate=0.1, max_depth=5, random_state=self.random_seed)
+        reg_model = GradientBoostingRegressor(n_estimators=250, learning_rate=0.05, max_depth=3, subsample=0.8, max_features=0.8, random_state=self.random_seed)
         pipeline = Pipeline(steps=[('preprocessor', reg_preprocessor), ('regressor', reg_model)])
         pipeline.fit(X_train_r, y_train_r)
 
@@ -660,20 +660,22 @@ class AnytimeAlgorithmSelectionUpdated:
             'Gradient Boosting Classifier',
             'Random Forest Classifier',
             'Multi-Layer Perceptron (MLP)',
-            'Gradient Boosting Regressor'
+            'Gradient Boosting Regressor',
+            'LightGBM Ranker (LTR)' if 'LightGBM Ranker (LTR)' in plot_df.index else 'LightGBM Ranker'
         ]
         
         labels_clean = [
             'Gradient\nBoosting',
             'Random\nForest',
-            'MLP\n(Neural Net)',
-            'GB Regressor\n(Cost-Based)'
+            'Multi-Layer\nPerceptron',
+            'GB\nRegressor',
+            'LightGBM\nRanker'
         ]
         
         exact_accs = [plot_df.loc[m, 'Exact Match Rate (%)'] for m in models_ordered]
         vbs_match_accs = [plot_df.loc[m, 'VBS Match Rate (%)'] for m in models_ordered]
 
-        plt.figure(figsize=(9.5, 5.8), dpi=300)
+        plt.figure(figsize=(10.5, 5.8), dpi=300)
         x = np.arange(len(labels_clean))
         width = 0.35
 
@@ -709,19 +711,21 @@ class AnytimeAlgorithmSelectionUpdated:
             'Gradient Boosting Classifier',
             'Random Forest Classifier',
             'Multi-Layer Perceptron (MLP)',
-            'Gradient Boosting Regressor'
+            'Gradient Boosting Regressor',
+            'LightGBM Ranker (LTR)' if 'LightGBM Ranker (LTR)' in plot_df.index else 'LightGBM Ranker'
         ]
         
         labels_clean = [
             'Gradient\nBoosting',
             'Random\nForest',
-            'MLP\n(Neural Net)',
-            'GB Regressor\n(Cost-Based)'
+            'Multi-Layer\nPerceptron',
+            'GB\nRegressor',
+            'LightGBM\nRanker'
         ]
         
         gains = [plot_df.loc[m, 'Cost Gain vs SBS (%)'] for m in models_ordered]
 
-        plt.figure(figsize=(9.0, 5.5), dpi=300)
+        plt.figure(figsize=(9.5, 5.5), dpi=300)
         x = np.arange(len(labels_clean))
         colors_gain = ['#1f77b4' if g >= 0 else '#d62728' for g in gains]
         rects_gain = plt.bar(x, gains, width=0.45, color=colors_gain, edgecolor='black', alpha=0.9)
