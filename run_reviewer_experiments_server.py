@@ -44,6 +44,9 @@ from components.models import ExperimentConfig, InstanceMetadata
 from components.utils import instance_data_parser, solution_parser
 from components.utils.helpers import parse_gaetano_metadata
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+SERVER_OUT_DIR = os.path.join(SCRIPT_DIR, "server_output")
+INSTANCES_DIR = os.path.join(SCRIPT_DIR, "instances")
 CHECKPOINT_INTERVAL_SEC = 0.5
 
 ORTOOLS_9_COMBOS = [
@@ -155,7 +158,7 @@ def solve_single_instance_worker(task_tuple):
         inst_data = instance_data_parser.load_vrp_instance(vrp_path)
         instance_meta = build_metadata_corrected(inst_data, inst_name)
         N = instance_meta.customers
-        T = round(N * 0.5, 3)
+        T = min(round(N * 0.5, 3), 60.0)
 
         time_checkpoints, checkpoint_configs = build_checkpoints_for_budget(T)
 
@@ -237,7 +240,7 @@ def solve_single_instance_worker(task_tuple):
                 # For HGS-CVRP, since pyhygese returns final cost at timeLimit T,
                 # also evaluate HGS at fixed short checkpoints (5s, 10s, 15s, 30s, 60s <= T)
                 if engine_name == "hgs":
-                    hgs_sub_budgets = [tb for tb in [1.0, 5.0, 10.0, 15.0, 20.0, 30.0, 60.0] if tb < T]
+                    hgs_sub_budgets = [tb for tb in [15.0, 30.0] if tb < T]
                     for tb in hgs_sub_budgets:
                         sub_exp = copy.deepcopy(exp)
                         sub_exp.kwargs["time_limit_seconds"] = tb
@@ -273,12 +276,12 @@ def solve_single_instance_worker(task_tuple):
 
 def get_200_test_instances() -> list[str]:
     """Loads the exact 200 unseen test instance names from CSV or Excel."""
-    split_csv = "benchmark_1000_train_test_split_ids.csv"
+    split_csv = os.path.join(SCRIPT_DIR, "benchmark_1000_train_test_split_ids.csv")
     if os.path.exists(split_csv):
         df_s = pd.read_csv(split_csv)
         return df_s[df_s["Split"] == "Test"]["Instance"].tolist()
 
-    excel_file = "or-tools_gaetano_benchmark_(1,000_random_instances)_20501208_174656.xlsx"
+    excel_file = os.path.join(SCRIPT_DIR, "or-tools_gaetano_benchmark_(1,000_random_instances)_20501208_174656.xlsx")
     if os.path.exists(excel_file):
         from sklearn.model_selection import train_test_split
         df_e = pd.read_excel(excel_file, usecols=["Instance"]).drop_duplicates()
@@ -309,9 +312,9 @@ def run_batch(tasks: list, workers: int, out_prefix: str):
 
     df_out = pd.DataFrame(all_rows)
     df_out.sort_values(by=["Instance", "First Solution", "Metaheuristic"], inplace=True)
-    os.makedirs("server_output", exist_ok=True)
-    csv_path = os.path.join("server_output", f"{out_prefix}.csv")
-    xlsx_path = os.path.join("server_output", f"{out_prefix}.xlsx")
+    os.makedirs(SERVER_OUT_DIR, exist_ok=True)
+    csv_path = os.path.join(SERVER_OUT_DIR, f"{out_prefix}.csv")
+    xlsx_path = os.path.join(SERVER_OUT_DIR, f"{out_prefix}.xlsx")
     df_out.to_csv(csv_path, index=False)
     try:
         df_out.to_excel(xlsx_path, index=False)
@@ -325,7 +328,7 @@ def main():
     parser.add_argument("--mode", choices=["all", "uchoa", "gaetano_test"], default="all",
                         help="Which experiment to run (default: all)")
     parser.add_argument("--workers", type=int, default=8, help="Number of parallel single-thread workers (default: 8)")
-    parser.add_argument("--reps", type=int, default=3, help="Number of repetitions per solver (default: 3, or 1 for fast run)")
+    parser.add_argument("--reps", type=int, default=1, help="Number of repetitions per solver (default: 1 for fast run, or 3 for multi-run average)")
     parser.add_argument("--max-uchoa-n", type=int, default=200,
                         help="Max customers N in Uchoa set (default: 200 -> 22 instances matching T-CVRP scale)")
     args = parser.parse_args()
@@ -336,7 +339,7 @@ def main():
     print("=" * 90)
 
     if args.mode in ("all", "uchoa"):
-        uchoa_files = sorted(glob.glob(os.path.join("instances", "uchoa", "*.vrp")))
+        uchoa_files = sorted(glob.glob(os.path.join(INSTANCES_DIR, "uchoa", "*.vrp")))
         selected_uchoa = []
         for f in uchoa_files:
             m = re.search(r"X-n(\d+)-k(\d+)", os.path.basename(f))
@@ -345,7 +348,7 @@ def main():
                 if n_cust <= args.max_uchoa_n:
                     selected_uchoa.append(f)
         print(f"[Experiment A - Uchoa CVRPLIB] Selected {len(selected_uchoa)} instances with N <= {args.max_uchoa_n}.")
-        cache_dir_a = os.path.join("server_output", "cache_exp_a_uchoa")
+        cache_dir_a = os.path.join(SERVER_OUT_DIR, "cache_exp_a_uchoa")
         tasks_a = [
             (f, True, True, True, args.reps, cache_dir_a)
             for f in selected_uchoa
@@ -355,19 +358,80 @@ def main():
     if args.mode in ("all", "gaetano_test"):
         test_inst_names = get_200_test_instances()
         gaetano_files = [
-            os.path.join("instances", "gaetano", f"{name}.vrp")
+            os.path.join(INSTANCES_DIR, "gaetano", f"{name}.vrp")
             for name in test_inst_names
-            if os.path.exists(os.path.join("instances", "gaetano", f"{name}.vrp"))
+            if os.path.exists(os.path.join(INSTANCES_DIR, "gaetano", f"{name}.vrp"))
         ]
         print(f"[Experiment B - Gaetano 200 Test Set] Found {len(gaetano_files)}/200 test .vrp files.")
-        cache_dir_b = os.path.join("server_output", "cache_exp_b_gaetano_test")
+        cache_dir_b = os.path.join(SERVER_OUT_DIR, "cache_exp_b_gaetano_test")
         tasks_b = [
             (f, False, True, True, args.reps, cache_dir_b)
             for f in gaetano_files
         ]
         run_batch(tasks_b, args.workers, "review_expB_gaetano_test200_hgs_and_default")
 
+    generate_post_run_summary()
     print("\nAll requested experiments finished successfully!")
+
+
+def generate_post_run_summary():
+    """Generates a concise markdown report from the produced experiment CSVs."""
+    summary_lines = [
+        "# Summary of Reviewer Experiments (USAL Server)",
+        f"Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        "",
+    ]
+
+    exp_b_csv = os.path.join(SERVER_OUT_DIR, "review_expB_gaetano_test200_hgs_and_default.csv")
+    if os.path.exists(exp_b_csv):
+        try:
+            df_b = pd.read_csv(exp_b_csv)
+            summary_lines.append("## Experiment B: Matched-Budget Baselines on 200 Test Instances (T <= 60s)")
+            summary_lines.append("")
+            # Group by Engine / Configuration
+            records = []
+            for (fs, mh), g in df_b.groupby(["First Solution", "Metaheuristic"]):
+                rec = {
+                    "Solver / Method": f"{fs} + {mh}",
+                    "Instances Evaluated": len(g),
+                    "Mean Best Cost": round(g["Best Cost"].mean(), 2) if "Best Cost" in g.columns else round(g["Avg Cost"].mean(), 2),
+                }
+                if "Gap to BKS" in g.columns:
+                    rec["Mean Gap to BKS (%)"] = round(g["Gap to BKS"].mean(), 2)
+                records.append(rec)
+            df_rec_b = pd.DataFrame(records)
+            summary_lines.append(df_rec_b.to_markdown(index=False))
+            summary_lines.append("")
+        except Exception as e:
+            summary_lines.append(f"Error parsing Exp B CSV: {e}")
+
+    exp_a_csv = os.path.join(SERVER_OUT_DIR, "review_expA_uchoa_cvrplib_results.csv")
+    if os.path.exists(exp_a_csv):
+        try:
+            df_a = pd.read_csv(exp_a_csv)
+            summary_lines.append("## Experiment A: CVRPLIB Set X Benchmark Results (N <= 200, T <= 60s)")
+            summary_lines.append("")
+            records_a = []
+            for (fs, mh), g in df_a.groupby(["First Solution", "Metaheuristic"]):
+                rec = {
+                    "Solver": f"{fs} + {mh}",
+                    "Instances": len(g),
+                    "Mean Cost": round(g["Best Cost"].mean(), 2) if "Best Cost" in g.columns else round(g["Avg Cost"].mean(), 2),
+                }
+                if "Gap to BKS" in g.columns:
+                    rec["Mean Gap to BKS (%)"] = round(g["Gap to BKS"].mean(), 2)
+                records_a.append(rec)
+            df_rec_a = pd.DataFrame(records_a)
+            summary_lines.append(df_rec_a.to_markdown(index=False))
+            summary_lines.append("")
+        except Exception as e:
+            summary_lines.append(f"Error parsing Exp A CSV: {e}")
+
+    out_md = os.path.join(SERVER_OUT_DIR, "REVIEWER_EXPERIMENTS_SUMMARY.md")
+    os.makedirs(SERVER_OUT_DIR, exist_ok=True)
+    with open(out_md, "w", encoding="utf-8") as f:
+        f.write("\n".join(summary_lines))
+    print(f"\n[SUMMARY SAVED] -> {out_md}")
 
 
 if __name__ == "__main__":
